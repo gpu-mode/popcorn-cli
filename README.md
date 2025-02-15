@@ -14,11 +14,11 @@ A command-line interface tool for submitting solutions to the [Popcorn Discord B
 
 If you want to build from source, you'll need:
 1. Install [Go](https://golang.org/doc/install)
-2. Clone this repository
-3. Run:
+2. Run:
 ```bash
-go install github.com/s1ro1/popcorn-cli@latest
+GOPROXY=direct go install github.com/s1ro1/popcorn-cli@latest
 ```
+3. Make sure the `popcorn-cli` binary is in your PATH
 
 ## Usage
 
@@ -26,7 +26,7 @@ Set the `POPCORN_API_URL` environment variable to the URL of the Popcorn API
 
 Then, simply run the binary:
 ```bash
-./popcorn-cli <submission-file>
+popcorn-cli <submission-file>
 ```
 
 The interactive CLI will guide you through the process of:
