@@ -30,11 +30,14 @@ type model struct {
 	gpusList               list.Model
 	selectedGpu            string
 	submissionModeList     list.Model
-	selectedSubmissionMode submissionModeItem
+	selectedSubmissionMode string
 	modalState             modelState
 	width                  int
 	height                 int
 	submissionResult       string
+
+	finalStatus            string
+	finishedOkay           bool
 
 	spinner spinner.Model
 }
@@ -45,6 +48,10 @@ func (m model) Init() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
+
+	if !m.finishedOkay {
+		return m, tea.Quit
+	}
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -67,6 +74,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return fetchAvailableGpus(m.selectedLeaderboard, m.selectedRunner)
 					})
 					if err != nil {
+						m.SetError(fmt.Sprintf("Error fetching GPUs: %s", err))
+						return m, tea.Quit
+					}
+					if len(gpus) == 0 {
+						m.SetError("No GPUs available for this runner and leaderboard.")
 						return m, tea.Quit
 					}
 					m.gpusList = list.New(gpus, list.NewDefaultDelegate(), m.width-2, m.height-2)
@@ -79,7 +91,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case modelStateSubmissionModeSelection:
 				if i := m.submissionModeList.SelectedItem(); i != nil {
-					m.selectedSubmissionMode = i.(submissionModeItem)
+					m.selectedSubmissionMode = i.(submissionModeItem).value
 					m.modalState = modelStateWaitingForResult
 					return m, m.Submit()
 				}
@@ -122,10 +134,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case errorMsg:
-		m.submissionResult = "Error: " + msg.err.Error()
+		m.SetError(msg.err.Error())
 		return m, nil
 	case submissionResultMsg:
-		m.submissionResult = string(msg)
+		m.finalStatus = string(msg)
+		m.finishedOkay = true
 		return m, tea.Quit
 	}
 
@@ -144,14 +157,15 @@ func (m model) View() string {
 	case modelStateSubmissionModeSelection:
 		content = m.submissionModeList.View()
 	case modelStateWaitingForResult:
-		if m.submissionResult != "" {
-			content = fmt.Sprintf("Result:\n\n%s\n\nPress ctrl+c to quit\n\n", m.submissionResult)
-		} else {
-			str := fmt.Sprintf("\n\n   %s Submitting solution...press ctrl+c to quit\n\n", m.spinner.View())
-			content = str
-		}
+		str := fmt.Sprintf("\n\n   %s Submitting solution...press ctrl+c to quit\n\n", m.spinner.View())
+		content = str
 	}
 	return docStyle.Render(content)
+}
+
+func (m model) SetError(err string) {
+	m.finalStatus = err
+	m.finishedOkay = false
 }
 
 func (m model) Submit() tea.Cmd {
@@ -159,7 +173,7 @@ func (m model) Submit() tea.Cmd {
 		go func() {
 			fileContent, err := os.ReadFile(m.filepath)
 			if err != nil {
-				p.Send(errorMsg{err})
+				m.SetError(fmt.Sprintf("Error reading file: %s", err))
 				return
 			}
 
@@ -168,27 +182,33 @@ func (m model) Submit() tea.Cmd {
 
 			part, err := writer.CreateFormFile("file", filepath.Base(m.filepath))
 			if err != nil {
+				m.SetError(fmt.Sprintf("Error creating form file: %s", err))
 				p.Send(errorMsg{err})
 				return
 			}
 
 			if _, err := part.Write(fileContent); err != nil {
+				m.SetError(fmt.Sprintf("Error writing file to form: %s", err))
 				p.Send(errorMsg{err})
 				return
 			}
 
 			if err := writer.Close(); err != nil {
+				m.SetError(fmt.Sprintf("Error closing form: %s", err))
 				p.Send(errorMsg{err})
 				return
 			}
 
-			url := fmt.Sprintf("http://localhost:8000/%s/%s/%s",
+			url := fmt.Sprintf("%s/%s/%s/%s/%s",
+				BASE_URL,
 				strings.ToLower(m.selectedLeaderboard),
 				strings.ToLower(m.selectedRunner),
-				strings.ToLower(m.selectedGpu))
+				strings.ToLower(m.selectedGpu),
+				strings.ToLower(m.selectedSubmissionMode))
 
 			req, err := http.NewRequest("POST", url, body)
 			if err != nil {
+				m.SetError(fmt.Sprintf("Error creating request: %s", err))
 				p.Send(errorMsg{err})
 				return
 			}
@@ -199,6 +219,7 @@ func (m model) Submit() tea.Cmd {
 
 			resp, err := client.Do(req)
 			if err != nil {
+				m.SetError(fmt.Sprintf("Error sending request: %s", err))
 				p.Send(errorMsg{err})
 				return
 			}
@@ -206,11 +227,13 @@ func (m model) Submit() tea.Cmd {
 
 			respBody, err := io.ReadAll(resp.Body)
 			if err != nil {
+				m.SetError(fmt.Sprintf("Error reading response body: %s", err))
 				p.Send(errorMsg{err})
 				return
 			}
 
 			if resp.StatusCode != http.StatusOK {
+				m.SetError(fmt.Sprintf("Server returned status %d: %s", resp.StatusCode, string(respBody)))
 				p.Send(errorMsg{fmt.Errorf("server returned status %d: %s", resp.StatusCode, string(respBody))})
 				return
 			}
@@ -220,12 +243,14 @@ func (m model) Submit() tea.Cmd {
 				Result map[string]any `json:"result"`
 			}
 			if err := json.Unmarshal(respBody, &result); err != nil {
+				m.SetError(fmt.Sprintf("Error unmarshalling response body: %s", err))
 				p.Send(errorMsg{err})
 				return
 			}
 
 			prettyResult, err := json.MarshalIndent(result.Result, "", "  ")
 			if err != nil {
+				m.SetError(fmt.Sprintf("Error marshalling response body: %s", err))
 				p.Send(errorMsg{err})
 				return
 			}
@@ -268,6 +293,8 @@ func main() {
 		submissionModeList: list.New(submissionModeItems, list.NewDefaultDelegate(), 0, 0),
 		spinner:            s,
 		modalState:         modelStateLeaderboardSelection,
+
+		finishedOkay: true,
 	}
 	m.leaderboardsList.Title = "Leaderboards"
 	m.runnersList.Title = "Runners"
@@ -279,7 +306,10 @@ func main() {
 		return
 	}
 
-	if m, ok := finalModel.(model); ok && m.submissionResult != "" {
-		fmt.Printf("\nResult:\n\n%s\n", m.submissionResult)
+	m, ok := finalModel.(model)
+	if ok && m.finishedOkay {
+		fmt.Printf("\nResult:\n\n%s\n", m.finalStatus)
+	} else if ok && !m.finishedOkay {
+		fmt.Printf("\nError:\n\n%s\n", m.finalStatus)
 	}
 }

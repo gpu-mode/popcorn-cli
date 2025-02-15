@@ -29,6 +29,7 @@ func (i runnerItem) Description() string { return i.description }
 type submissionModeItem struct {
 	title       string
 	description string
+	value       string
 }
 
 func (i submissionModeItem) FilterValue() string { return i.title }
