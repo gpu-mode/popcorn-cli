@@ -1,4 +1,4 @@
-module popcorn-cli
+module github.com/S1ro1/popcorn-cli
 
 go 1.21
 

@@ -9,13 +9,11 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/lipgloss"
 
-	"popcorn-cli/src/models"
-	"popcorn-cli/src/service"
+	"github.com/S1ro1/popcorn-cli/src/models"
+	"github.com/S1ro1/popcorn-cli/src/service"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
-
-const BASE_URL = "http://localhost:8000"
 
 var runnerItems = []list.Item{
 	models.RunnerItem{TitleText: "Modal", DescriptionText: "Submit a solution to be evaluated on Modal runners.", Value: "modal"},

@@ -14,7 +14,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 
-	"popcorn-cli/src/models"
+	"github.com/S1ro1/popcorn-cli/src/models"
 )
 
 var BASE_URL = os.Getenv("POPCORN_API_URL")
