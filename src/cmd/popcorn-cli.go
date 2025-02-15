@@ -1,5 +1,4 @@
-package main
-
+package cmd
 
 import (
 	"fmt"
@@ -46,8 +45,8 @@ type model struct {
 	width                  int
 	height                 int
 
-	finalStatus            string
-	finishedOkay           bool
+	finalStatus  string
+	finishedOkay bool
 
 	spinner spinner.Model
 }
@@ -200,7 +199,7 @@ func (m model) Submit() tea.Cmd {
 	}
 }
 
-func main() {
+func Execute() {
 	args := os.Args[1:]
 
 	if len(args) == 0 {
