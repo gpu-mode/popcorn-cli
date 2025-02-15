@@ -1,22 +1,35 @@
 package main
 
+
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"mime/multipart"
-	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/lipgloss"
+
+	"popcorn-cli/src/models"
+	"popcorn-cli/src/service"
+
 	tea "github.com/charmbracelet/bubbletea"
-	lipgloss "github.com/charmbracelet/lipgloss"
 )
+
+const BASE_URL = "http://localhost:8000"
+
+var runnerItems = []list.Item{
+	models.RunnerItem{TitleText: "Modal", DescriptionText: "Submit a solution to be evaluated on Modal runners.", Value: "modal"},
+	models.RunnerItem{TitleText: "Github", DescriptionText: "Submit a solution to be evaluated on Github runners. This can take a little longer to spin up.", Value: "github"},
+}
+
+var submissionModeItems = []list.Item{
+	models.SubmissionModeItem{TitleText: "Test", DescriptionText: "Test the solution and give detailed results about passed/failed tests.", Value: "test"},
+	models.SubmissionModeItem{TitleText: "Benchmark", DescriptionText: "Benchmark the solution, this also runs the tests and afterwards runs the benchmark, returning detailed timing results", Value: "benchmark"},
+	models.SubmissionModeItem{TitleText: "Leaderboard", DescriptionText: "Submit to the leaderboard, this first runs public tests and then private tests. If both pass, the submission is evaluated and submit to the leaderboard.", Value: "leaderboard"},
+	models.SubmissionModeItem{TitleText: "Private", DescriptionText: "TODO", Value: "private"},
+	models.SubmissionModeItem{TitleText: "Script", DescriptionText: "TODO", Value: "script"},
+	models.SubmissionModeItem{TitleText: "Profile", DescriptionText: "TODO", Value: "profile"},
+}
 
 var docStyle = lipgloss.NewStyle().Margin(1, 2)
 var p *tea.Program
@@ -31,10 +44,9 @@ type model struct {
 	selectedGpu            string
 	submissionModeList     list.Model
 	selectedSubmissionMode string
-	modalState             modelState
+	modalState             models.ModelState
 	width                  int
 	height                 int
-	submissionResult       string
 
 	finalStatus            string
 	finishedOkay           bool
@@ -60,18 +72,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.String() == "enter" {
 			switch m.modalState {
-			case modelStateLeaderboardSelection:
+			case models.ModelStateLeaderboardSelection:
 				if i := m.leaderboardsList.SelectedItem(); i != nil {
-					m.selectedLeaderboard = i.(leaderboardItem).title
-					m.modalState = modelStateRunnerSelection
+					m.selectedLeaderboard = i.(models.LeaderboardItem).TitleText
+					m.modalState = models.ModelStateRunnerSelection
 					m.runnersList.SetSize(m.width-2, m.height-2)
 				}
-			case modelStateRunnerSelection:
+			case models.ModelStateRunnerSelection:
 				if i := m.runnersList.SelectedItem(); i != nil {
-					m.selectedRunner = i.(runnerItem).value
-					m.modalState = modelStateGpuSelection
-					gpus, err := getListItems(func() ([]gpuItem, error) {
-						return fetchAvailableGpus(m.selectedLeaderboard, m.selectedRunner)
+					m.selectedRunner = i.(models.RunnerItem).Value
+					m.modalState = models.ModelStateGpuSelection
+					gpus, err := service.GetListItems(func() ([]models.GpuItem, error) {
+						return service.FetchAvailableGpus(m.selectedLeaderboard, m.selectedRunner)
 					})
 					if err != nil {
 						m.SetError(fmt.Sprintf("Error fetching GPUs: %s", err))
@@ -83,19 +95,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.gpusList = list.New(gpus, list.NewDefaultDelegate(), m.width-2, m.height-2)
 				}
-			case modelStateGpuSelection:
+			case models.ModelStateGpuSelection:
 				if i := m.gpusList.SelectedItem(); i != nil {
-					m.selectedGpu = i.(gpuItem).title
-					m.modalState = modelStateSubmissionModeSelection
+					m.selectedGpu = i.(models.GpuItem).TitleText
+					m.modalState = models.ModelStateSubmissionModeSelection
 					m.submissionModeList.SetSize(m.width-2, m.height-2)
 				}
-			case modelStateSubmissionModeSelection:
+			case models.ModelStateSubmissionModeSelection:
 				if i := m.submissionModeList.SelectedItem(); i != nil {
-					m.selectedSubmissionMode = i.(submissionModeItem).value
-					m.modalState = modelStateWaitingForResult
+					m.selectedSubmissionMode = i.(models.SubmissionModeItem).Value
+					m.modalState = models.ModelStateWaitingForResult
 					return m, m.Submit()
 				}
-			case modelStateWaitingForResult:
+			case models.ModelStateWaitingForResult:
 				return m, nil
 			}
 		}
@@ -108,35 +120,35 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		listHeight := msg.Height - v
 
 		switch m.modalState {
-		case modelStateLeaderboardSelection:
+		case models.ModelStateLeaderboardSelection:
 			m.leaderboardsList.SetSize(listWidth, listHeight)
-		case modelStateRunnerSelection:
+		case models.ModelStateRunnerSelection:
 			m.runnersList.SetSize(listWidth, listHeight)
-		case modelStateGpuSelection:
+		case models.ModelStateGpuSelection:
 			m.gpusList.SetSize(listWidth, listHeight)
-		case modelStateSubmissionModeSelection:
+		case models.ModelStateSubmissionModeSelection:
 			m.submissionModeList.SetSize(listWidth, listHeight)
 		}
 	}
 
 	switch m.modalState {
-	case modelStateLeaderboardSelection:
+	case models.ModelStateLeaderboardSelection:
 		m.leaderboardsList, cmd = m.leaderboardsList.Update(msg)
-	case modelStateRunnerSelection:
+	case models.ModelStateRunnerSelection:
 		m.runnersList, cmd = m.runnersList.Update(msg)
-	case modelStateGpuSelection:
+	case models.ModelStateGpuSelection:
 		m.gpusList, cmd = m.gpusList.Update(msg)
-	case modelStateSubmissionModeSelection:
+	case models.ModelStateSubmissionModeSelection:
 		m.submissionModeList, cmd = m.submissionModeList.Update(msg)
-	case modelStateWaitingForResult:
+	case models.ModelStateWaitingForResult:
 		m.spinner, cmd = m.spinner.Update(msg)
 	}
 
 	switch msg := msg.(type) {
-	case errorMsg:
-		m.SetError(msg.err.Error())
+	case models.ErrorMsg:
+		m.SetError(msg.Err.Error())
 		return m, nil
-	case submissionResultMsg:
+	case models.SubmissionResultMsg:
 		m.finalStatus = string(msg)
 		m.finishedOkay = true
 		return m, tea.Quit
@@ -148,22 +160,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	var content string
 	switch m.modalState {
-	case modelStateLeaderboardSelection:
+	case models.ModelStateLeaderboardSelection:
 		content = m.leaderboardsList.View()
-	case modelStateRunnerSelection:
+	case models.ModelStateRunnerSelection:
 		content = m.runnersList.View()
-	case modelStateGpuSelection:
+	case models.ModelStateGpuSelection:
 		content = m.gpusList.View()
-	case modelStateSubmissionModeSelection:
+	case models.ModelStateSubmissionModeSelection:
 		content = m.submissionModeList.View()
-	case modelStateWaitingForResult:
+	case models.ModelStateWaitingForResult:
 		str := fmt.Sprintf("\n\n   %s Submitting solution...press ctrl+c to quit\n\n", m.spinner.View())
 		content = str
 	}
 	return docStyle.Render(content)
 }
 
-func (m model) SetError(err string) {
+func (m *model) SetError(err string) {
 	m.finalStatus = err
 	m.finishedOkay = false
 }
@@ -177,85 +189,13 @@ func (m model) Submit() tea.Cmd {
 				return
 			}
 
-			body := &bytes.Buffer{}
-			writer := multipart.NewWriter(body)
-
-			part, err := writer.CreateFormFile("file", filepath.Base(m.filepath))
+			prettyResult, err := service.SubmitSolution(m.selectedLeaderboard, m.selectedRunner, m.selectedGpu, m.selectedSubmissionMode, m.filepath, fileContent)
 			if err != nil {
-				m.SetError(fmt.Sprintf("Error creating form file: %s", err))
-				p.Send(errorMsg{err})
+				m.SetError(fmt.Sprintf("Error submitting solution: %s", err))
 				return
 			}
 
-			if _, err := part.Write(fileContent); err != nil {
-				m.SetError(fmt.Sprintf("Error writing file to form: %s", err))
-				p.Send(errorMsg{err})
-				return
-			}
-
-			if err := writer.Close(); err != nil {
-				m.SetError(fmt.Sprintf("Error closing form: %s", err))
-				p.Send(errorMsg{err})
-				return
-			}
-
-			url := fmt.Sprintf("%s/%s/%s/%s/%s",
-				BASE_URL,
-				strings.ToLower(m.selectedLeaderboard),
-				strings.ToLower(m.selectedRunner),
-				strings.ToLower(m.selectedGpu),
-				strings.ToLower(m.selectedSubmissionMode))
-
-			req, err := http.NewRequest("POST", url, body)
-			if err != nil {
-				m.SetError(fmt.Sprintf("Error creating request: %s", err))
-				p.Send(errorMsg{err})
-				return
-			}
-
-			req.Header.Set("Content-Type", writer.FormDataContentType())
-
-			client := &http.Client{Timeout: 60 * time.Second}
-
-			resp, err := client.Do(req)
-			if err != nil {
-				m.SetError(fmt.Sprintf("Error sending request: %s", err))
-				p.Send(errorMsg{err})
-				return
-			}
-			defer resp.Body.Close()
-
-			respBody, err := io.ReadAll(resp.Body)
-			if err != nil {
-				m.SetError(fmt.Sprintf("Error reading response body: %s", err))
-				p.Send(errorMsg{err})
-				return
-			}
-
-			if resp.StatusCode != http.StatusOK {
-				m.SetError(fmt.Sprintf("Server returned status %d: %s", resp.StatusCode, string(respBody)))
-				p.Send(errorMsg{fmt.Errorf("server returned status %d: %s", resp.StatusCode, string(respBody))})
-				return
-			}
-
-			var result struct {
-				Status string         `json:"status"`
-				Result map[string]any `json:"result"`
-			}
-			if err := json.Unmarshal(respBody, &result); err != nil {
-				m.SetError(fmt.Sprintf("Error unmarshalling response body: %s", err))
-				p.Send(errorMsg{err})
-				return
-			}
-
-			prettyResult, err := json.MarshalIndent(result.Result, "", "  ")
-			if err != nil {
-				m.SetError(fmt.Sprintf("Error marshalling response body: %s", err))
-				p.Send(errorMsg{err})
-				return
-			}
-
-			p.Send(submissionResultMsg(prettyResult))
+			p.Send(models.SubmissionResultMsg(prettyResult))
 		}()
 
 		return m.spinner.Tick()
@@ -276,7 +216,7 @@ func main() {
 		return
 	}
 
-	leaderboardItems, err := getListItems(fetchLeaderboards)
+	leaderboardItems, err := service.GetListItems(service.FetchLeaderboards)
 	if err != nil {
 		fmt.Println("Error fetching leaderboards:", err)
 		return
@@ -292,9 +232,9 @@ func main() {
 		runnersList:        list.New(runnerItems, list.NewDefaultDelegate(), 0, 0),
 		submissionModeList: list.New(submissionModeItems, list.NewDefaultDelegate(), 0, 0),
 		spinner:            s,
-		modalState:         modelStateLeaderboardSelection,
-
-		finishedOkay: true,
+		modalState:         models.ModelStateLeaderboardSelection,
+		finishedOkay:       true,
+		finalStatus:        "",
 	}
 	m.leaderboardsList.Title = "Leaderboards"
 	m.runnersList.Title = "Runners"
