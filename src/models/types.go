@@ -1,12 +1,13 @@
 package models
 
 type LeaderboardItem struct {
-	TitleText string
+	TitleText     string
+	TaskDescription string
 }
 
 func (i LeaderboardItem) FilterValue() string { return i.TitleText }
 func (i LeaderboardItem) Title() string       { return i.TitleText }
-func (i LeaderboardItem) Description() string { return "" }
+func (i LeaderboardItem) Description() string { return i.TaskDescription }
 
 type GpuItem struct {
 	TitleText string
