@@ -8,7 +8,8 @@ import (
 )
 
 func main() {
-	if os.Getenv("POPCORN_API_URL") == "" {
+	_, ok := os.LookupEnv("POPCORN_API_URL")
+	if !ok {
 		fmt.Println("POPCORN_API_URL is not set. Please set it to the URL of the Popcorn API.")
 		os.Exit(1)
 	}
