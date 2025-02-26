@@ -16,7 +16,7 @@ If you want to build from source, you'll need:
 1. Install [Go](https://golang.org/doc/install)
 2. Run:
 ```bash
-GOPROXY=direct go install github.com/s1ro1/popcorn-cli@latest
+GOPROXY=direct go install github.com/S1ro1/popcorn-cli@latest
 ```
 3. Make sure the `popcorn-cli` binary is in your PATH
 
