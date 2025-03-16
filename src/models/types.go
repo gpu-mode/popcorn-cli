@@ -1,7 +1,7 @@
 package models
 
 type LeaderboardItem struct {
-	TitleText     string
+	TitleText       string
 	TaskDescription string
 }
 
