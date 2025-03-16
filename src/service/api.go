@@ -53,8 +53,8 @@ func FetchLeaderboards() ([]models.LeaderboardItem, error) {
 	return leaderboardNames, nil
 }
 
-func FetchAvailableGpus(leaderboard string, runner string) ([]models.GpuItem, error) {
-	resp, err := http.Get(BASE_URL + "/" + leaderboard + "/" + runner + "/gpus")
+func FetchAvailableGpus(leaderboard string) ([]models.GpuItem, error) {
+	resp, err := http.Get(BASE_URL + "/gpus/" + leaderboard)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func FetchAvailableGpus(leaderboard string, runner string) ([]models.GpuItem, er
 	return gpuItems, nil
 }
 
-func SubmitSolution(leaderboard string, runner string, gpu string, submissionMode string, filename string, fileContent []byte) (string, error) {
+func SubmitSolution(leaderboard string, gpu string, submissionMode string, filename string, fileContent []byte) (string, error) {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
@@ -100,10 +100,9 @@ func SubmitSolution(leaderboard string, runner string, gpu string, submissionMod
 		return "", fmt.Errorf("error closing form: %s", err)
 	}
 
-	url := fmt.Sprintf("%s/%s/%s/%s/%s",
+	url := fmt.Sprintf("%s/%s/%s/%s",
 		BASE_URL,
 		strings.ToLower(leaderboard),
-		strings.ToLower(runner),
 		strings.ToLower(gpu),
 		strings.ToLower(submissionMode))
 

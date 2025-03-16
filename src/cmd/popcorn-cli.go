@@ -11,6 +11,8 @@ import (
 	"github.com/S1ro1/popcorn-cli/src/models"
 	"github.com/S1ro1/popcorn-cli/src/service"
 
+	// "github.com/S1ro1/popcorn-cli/src/utils"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -35,8 +37,6 @@ type model struct {
 	filepath               string
 	leaderboardsList       list.Model
 	selectedLeaderboard    string
-	runnersList            list.Model
-	selectedRunner         string
 	gpusList               list.Model
 	selectedGpu            string
 	submissionModeList     list.Model
@@ -72,22 +72,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case models.ModelStateLeaderboardSelection:
 				if i := m.leaderboardsList.SelectedItem(); i != nil {
 					m.selectedLeaderboard = i.(models.LeaderboardItem).TitleText
-					m.modalState = models.ModelStateRunnerSelection
-					m.runnersList.SetSize(m.width-2, m.height-2)
-				}
-			case models.ModelStateRunnerSelection:
-				if i := m.runnersList.SelectedItem(); i != nil {
-					m.selectedRunner = i.(models.RunnerItem).Value
 					m.modalState = models.ModelStateGpuSelection
 					gpus, err := service.GetListItems(func() ([]models.GpuItem, error) {
-						return service.FetchAvailableGpus(m.selectedLeaderboard, m.selectedRunner)
+						return service.FetchAvailableGpus(m.selectedLeaderboard)
 					})
 					if err != nil {
 						m.SetError(fmt.Sprintf("Error fetching GPUs: %s", err))
 						return m, tea.Quit
 					}
 					if len(gpus) == 0 {
-						m.SetError("No GPUs available for this runner and leaderboard.")
+						m.SetError("No GPUs available for this leaderboard.")
 						return m, tea.Quit
 					}
 					m.gpusList = list.New(gpus, list.NewDefaultDelegate(), m.width-2, m.height-2)
@@ -119,8 +113,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.modalState {
 		case models.ModelStateLeaderboardSelection:
 			m.leaderboardsList.SetSize(listWidth, listHeight)
-		case models.ModelStateRunnerSelection:
-			m.runnersList.SetSize(listWidth, listHeight)
 		case models.ModelStateGpuSelection:
 			m.gpusList.SetSize(listWidth, listHeight)
 		case models.ModelStateSubmissionModeSelection:
@@ -131,8 +123,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.modalState {
 	case models.ModelStateLeaderboardSelection:
 		m.leaderboardsList, cmd = m.leaderboardsList.Update(msg)
-	case models.ModelStateRunnerSelection:
-		m.runnersList, cmd = m.runnersList.Update(msg)
 	case models.ModelStateGpuSelection:
 		m.gpusList, cmd = m.gpusList.Update(msg)
 	case models.ModelStateSubmissionModeSelection:
@@ -159,8 +149,6 @@ func (m model) View() string {
 	switch m.modalState {
 	case models.ModelStateLeaderboardSelection:
 		content = m.leaderboardsList.View()
-	case models.ModelStateRunnerSelection:
-		content = m.runnersList.View()
 	case models.ModelStateGpuSelection:
 		content = m.gpusList.View()
 	case models.ModelStateSubmissionModeSelection:
@@ -187,7 +175,7 @@ func (m model) Submit() tea.Cmd {
 				return
 			}
 
-			prettyResult, err := service.SubmitSolution(m.selectedLeaderboard, m.selectedRunner, m.selectedGpu, m.selectedSubmissionMode, m.filepath, fileContent)
+			prettyResult, err := service.SubmitSolution(m.selectedLeaderboard, m.selectedGpu, m.selectedSubmissionMode, m.filepath, fileContent)
 			if err != nil {
 				p.Send(models.ErrorMsg{Err: fmt.Errorf("error submitting solution: %s", err)})
 				m.SetError(fmt.Sprintf("Error submitting solution: %s", err))
@@ -215,6 +203,12 @@ func Execute() {
 		return
 	}
 
+	// popcornDirectives, err := utils.GetPopcornDirectives(filepath)
+	// if err != nil {
+	// 	fmt.Println("Error fetching popcorn directives:", err)
+	// 	return
+	// }
+
 	leaderboardItems, err := service.GetListItems(service.FetchLeaderboards)
 	if err != nil {
 		fmt.Println("Error fetching leaderboards:", err)
@@ -228,7 +222,6 @@ func Execute() {
 	m := model{
 		filepath:           filepath,
 		leaderboardsList:   list.New(leaderboardItems, list.NewDefaultDelegate(), 0, 0),
-		runnersList:        list.New(runnerItems, list.NewDefaultDelegate(), 0, 0),
 		submissionModeList: list.New(submissionModeItems, list.NewDefaultDelegate(), 0, 0),
 		spinner:            s,
 		modalState:         models.ModelStateLeaderboardSelection,
@@ -236,7 +229,6 @@ func Execute() {
 		finalStatus:        "",
 	}
 	m.leaderboardsList.Title = "Leaderboards"
-	m.runnersList.Title = "Runners"
 
 	p = tea.NewProgram(m)
 	finalModel, err := p.Run()
