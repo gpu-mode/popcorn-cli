@@ -41,13 +41,12 @@ func FetchLeaderboards() ([]models.LeaderboardItem, error) {
 		return nil, err
 	}
 
-
 	leaderboardNames := make([]models.LeaderboardItem, len(leaderboards))
 	for i, lb := range leaderboards {
 		task := lb["task"].(map[string]interface{})
 		leaderboardNames[i] = models.LeaderboardItem{
-			TitleText:         lb["name"].(string),
-			TaskDescription:   task["description"].(string),
+			TitleText:       lb["name"].(string),
+			TaskDescription: task["description"].(string),
 		}
 	}
 
@@ -161,4 +160,3 @@ func GetListItems[T list.Item](fetchFn func() ([]T, error)) ([]list.Item, error)
 
 	return listItems, nil
 }
-

@@ -182,12 +182,14 @@ func (m model) Submit() tea.Cmd {
 		go func() {
 			fileContent, err := os.ReadFile(m.filepath)
 			if err != nil {
+				p.Send(models.ErrorMsg{Err: fmt.Errorf("error reading file: %s", err)})
 				m.SetError(fmt.Sprintf("Error reading file: %s", err))
 				return
 			}
 
 			prettyResult, err := service.SubmitSolution(m.selectedLeaderboard, m.selectedRunner, m.selectedGpu, m.selectedSubmissionMode, m.filepath, fileContent)
 			if err != nil {
+				p.Send(models.ErrorMsg{Err: fmt.Errorf("error submitting solution: %s", err)})
 				m.SetError(fmt.Sprintf("Error submitting solution: %s", err))
 				return
 			}
