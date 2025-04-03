@@ -203,7 +203,7 @@ func (m model) Submit() tea.Cmd {
 	}
 }
 
-func Execute() {
+func RunSubmission() {
 	args := os.Args[1:]
 
 	if len(args) == 0 {
