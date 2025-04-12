@@ -29,11 +29,25 @@ pub struct Cli {
 }
 
 #[derive(Subcommand, Debug)]
+enum AuthProvider {
+    /// Use Discord for authentication
+    Discord,
+    /// Use GitHub for authentication
+    Github,
+}
+
+#[derive(Subcommand, Debug)]
 enum Commands {
-    /// Login to Popcorn via Discord
-    Reregister,
-    /// Register to Popcorn via Discord
-    Register,
+    /// Re-register with Popcorn (links existing account)
+    Reregister {
+        #[command(subcommand)]
+        provider: AuthProvider,
+    },
+    /// Register a new account with Popcorn
+    Register {
+        #[command(subcommand)]
+        provider: AuthProvider,
+    },
     /// Submit a solution (default command)
     Submit {
         /// Path to the solution file
@@ -632,8 +646,20 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 
 pub async fn execute(cli: Cli) -> Result<()> {
     match cli.command {
-        Some(Commands::Reregister) => login::run_auth(true).await,
-        Some(Commands::Register) => login::run_auth(false).await,
+        Some(Commands::Reregister { provider }) => {
+            let provider_str = match provider {
+                AuthProvider::Discord => "discord",
+                AuthProvider::Github => "github",
+            };
+            login::run_auth(true, provider_str).await
+        }
+        Some(Commands::Register { provider }) => {
+            let provider_str = match provider {
+                AuthProvider::Discord => "discord",
+                AuthProvider::Github => "github",
+            };
+            login::run_auth(false, provider_str).await
+        }
         Some(Commands::Submit { filepath }) => {
             let file_to_submit = filepath.or(cli.filepath); // Use filepath from subcommand first, then top-level
             run_submit_tui(file_to_submit).await
