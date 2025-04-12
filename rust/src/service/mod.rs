@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::multipart::{Form, Part};
 use reqwest::Client;
 use serde_json::Value;
@@ -9,9 +10,23 @@ use std::time::Duration;
 use crate::models::{GpuItem, LeaderboardItem};
 
 // Helper function to create a reusable reqwest client
-pub fn create_client() -> Result<Client> {
+pub fn create_client(cli_id: Option<String>) -> Result<Client> {
+    let mut default_headers = HeaderMap::new();
+
+    if let Some(id) = cli_id {
+        match HeaderValue::from_str(&id) {
+            Ok(val) => {
+                default_headers.insert("X-Popcorn-Cli-Id", val);
+            }
+            Err(_) => {
+                return Err(anyhow!("Invalid cli_id format for HTTP header"));
+            }
+        }
+    }
+
     Client::builder()
-        .timeout(Duration::from_secs(60)) // Set a default timeout
+        .timeout(Duration::from_secs(60))
+        .default_headers(default_headers)
         .build()
         .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))
 }
