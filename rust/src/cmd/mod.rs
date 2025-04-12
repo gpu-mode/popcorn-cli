@@ -8,6 +8,7 @@ use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScree
 use ratatui::prelude::*;
 use ratatui::style::{Color, Style};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
+use tokio::task::JoinHandle;
 
 use crate::models::{GpuItem, LeaderboardItem, ModelState, SubmissionModeItem};
 use crate::service;
@@ -26,8 +27,11 @@ pub struct App {
     pub selected_submission_mode: Option<String>,
     pub modal_state: ModelState,
     pub final_status: Option<String>,
-    pub is_loading: bool,
+    pub loading_message: Option<String>,
     pub should_quit: bool,
+    pub submission_task: Option<JoinHandle<Result<String, anyhow::Error>>>,
+    pub leaderboards_task: Option<JoinHandle<Result<Vec<LeaderboardItem>, anyhow::Error>>>,
+    pub gpus_task: Option<JoinHandle<Result<Vec<GpuItem>, anyhow::Error>>>,
 }
 
 impl App {
@@ -78,8 +82,11 @@ impl App {
             selected_submission_mode: None,
             modal_state: ModelState::LeaderboardSelection,
             final_status: None,
-            is_loading: false,
+            loading_message: None,
             should_quit: false,
+            submission_task: None,
+            leaderboards_task: None,
+            gpus_task: None,
         };
 
         // Initialize list states
@@ -100,14 +107,33 @@ impl App {
             } else {
                 self.modal_state = ModelState::GpuSelection;
             }
+        } else if !popcorn_directives.gpus.is_empty() {
+            self.selected_gpu = Some(popcorn_directives.gpus[0].clone());
+            if !popcorn_directives.leaderboard_name.is_empty() {
+                self.selected_leaderboard = Some(popcorn_directives.leaderboard_name);
+                self.modal_state = ModelState::SubmissionModeSelection;
+            } else {
+                self.modal_state = ModelState::LeaderboardSelection;
+            }
+        } else {
+            self.modal_state = ModelState::LeaderboardSelection;
         }
     }
 
     pub fn handle_key_event(&mut self, key: KeyEvent) -> Result<bool> {
+        // Allow quitting anytime, even while loading
+        if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            self.should_quit = true;
+            return Ok(true);
+        }
+
+        // Ignore other keys while loading
+        if self.loading_message.is_some() {
+            return Ok(false);
+        }
+
         match key.code {
-            KeyCode::Char('q') | KeyCode::Char('c')
-                if key.modifiers.contains(KeyModifiers::CONTROL) =>
-            {
+            KeyCode::Char('q') => {
                 self.should_quit = true;
                 return Ok(true);
             }
@@ -120,6 +146,13 @@ impl App {
 
                             if self.selected_gpu.is_none() {
                                 self.modal_state = ModelState::GpuSelection;
+                                // Spawn GPU loading task
+                                if let Err(e) = self.spawn_load_gpus() {
+                                    self.set_error_and_quit(format!(
+                                        "Error starting GPU fetch: {}",
+                                        e
+                                    ));
+                                }
                             } else {
                                 self.modal_state = ModelState::SubmissionModeSelection;
                             }
@@ -141,13 +174,19 @@ impl App {
                         if idx < self.submission_modes.len() {
                             self.selected_submission_mode =
                                 Some(self.submission_modes[idx].value.clone());
-                            self.modal_state = ModelState::WaitingForResult;
-                            self.is_loading = true;
+                            self.modal_state = ModelState::WaitingForResult; // State for logic, UI uses loading msg
+                                                                             // Spawn the submission task
+                            if let Err(e) = self.spawn_submit_solution() {
+                                self.set_error_and_quit(format!(
+                                    "Error starting submission: {}",
+                                    e
+                                ));
+                            }
                             return Ok(true);
                         }
                     }
                 }
-                _ => {}
+                _ => {} // WaitingForResult state doesn't handle Enter
             },
             KeyCode::Up => {
                 self.move_selection_up();
@@ -157,10 +196,17 @@ impl App {
                 self.move_selection_down();
                 return Ok(true);
             }
-            _ => {}
+            _ => {} // Ignore other keys
         }
 
         Ok(false)
+    }
+
+    // Helper to reduce repetition
+    fn set_error_and_quit(&mut self, error_message: String) {
+        self.final_status = Some(error_message);
+        self.should_quit = true;
+        self.loading_message = None; // Clear loading on error
     }
 
     fn move_selection_up(&mut self) {
@@ -194,21 +240,21 @@ impl App {
         match self.modal_state {
             ModelState::LeaderboardSelection => {
                 if let Some(idx) = self.leaderboards_state.selected() {
-                    if idx < self.leaderboards.len() - 1 {
+                    if idx < self.leaderboards.len().saturating_sub(1) {
                         self.leaderboards_state.select(Some(idx + 1));
                     }
                 }
             }
             ModelState::GpuSelection => {
                 if let Some(idx) = self.gpus_state.selected() {
-                    if idx < self.gpus.len() - 1 {
+                    if idx < self.gpus.len().saturating_sub(1) {
                         self.gpus_state.select(Some(idx + 1));
                     }
                 }
             }
             ModelState::SubmissionModeSelection => {
                 if let Some(idx) = self.submission_modes_state.selected() {
-                    if idx < self.submission_modes.len() - 1 {
+                    if idx < self.submission_modes.len().saturating_sub(1) {
                         self.submission_modes_state.select(Some(idx + 1));
                     }
                 }
@@ -217,75 +263,166 @@ impl App {
         }
     }
 
-    pub async fn load_leaderboards(&mut self) -> Result<()> {
-        match service::fetch_leaderboards().await {
-            Ok(leaderboards) => {
-                self.leaderboards = leaderboards;
-            }
-            Err(e) => {
-                return Err(e);
-            }
+    pub fn spawn_load_leaderboards(&mut self) -> Result<()> {
+        if self.leaderboards_task.is_some() {
+            return Ok(());
         }
-        Ok(())
-    }
-    pub async fn load_gpus(&mut self) -> Result<()> {
-        if let Some(leaderboard) = &self.selected_leaderboard {
-            match service::fetch_available_gpus(leaderboard).await {
-                Ok(gpus) => {
-                    self.gpus = gpus;
-                    if self.gpus.is_empty() {
-                        return Err(anyhow!("No GPUs available for this leaderboard."));
-                    }
-                }
-                Err(e) => {
-                    if e.to_string().contains("Invalid leaderboard name") {
-                        return Err(anyhow!("Invalid leaderboard name: '{}'. Please check if the leaderboard exists.", leaderboard));
-                    }
-                    return Err(e);
-                }
-            }
-        }
+        self.loading_message = Some("Fetching leaderboards...".to_string());
+        let handle = tokio::spawn(async { service::fetch_leaderboards().await });
+        self.leaderboards_task = Some(handle);
         Ok(())
     }
 
-    pub async fn submit_solution(&mut self) -> Result<()> {
+    pub fn spawn_load_gpus(&mut self) -> Result<()> {
+        if self.gpus_task.is_some() {
+            return Ok(());
+        }
         let leaderboard = self
             .selected_leaderboard
-            .as_ref()
-            .ok_or_else(|| anyhow!("No leaderboard selected"))?;
+            .clone()
+            .ok_or_else(|| anyhow!("Cannot load GPUs without a selected leaderboard."))?;
+
+        self.loading_message = Some("Fetching GPUs...".to_string());
+
+        let handle = tokio::spawn(async move { service::fetch_available_gpus(&leaderboard).await });
+        self.gpus_task = Some(handle);
+        Ok(())
+    }
+
+    pub fn spawn_submit_solution(&mut self) -> Result<()> {
+        if self.submission_task.is_some() {
+            return Ok(());
+        }
+        let leaderboard = self
+            .selected_leaderboard
+            .clone()
+            .ok_or_else(|| anyhow!("Internal Error: No leaderboard selected"))?;
 
         let gpu = self
             .selected_gpu
-            .as_ref()
-            .ok_or_else(|| anyhow!("No GPU selected"))?;
+            .clone()
+            .ok_or_else(|| anyhow!("Internal Error: No GPU selected"))?;
 
         let submission_mode = self
             .selected_submission_mode
-            .as_ref()
-            .ok_or_else(|| anyhow!("No submission mode selected"))?;
+            .clone()
+            .ok_or_else(|| anyhow!("Internal Error: No submission mode selected"))?;
 
-        let file_content = fs::read(&self.filepath)?;
+        let filepath = self.filepath.clone();
 
-        let result = service::submit_solution(
-            leaderboard,
-            gpu,
-            submission_mode,
-            &self.filepath,
-            &file_content,
-        )
-        .await;
+        self.loading_message = Some("Submitting solution...".to_string());
 
-        match result {
-            Ok(result) => {
-                self.final_status = Some(result);
-                self.should_quit = true;
+        let handle = tokio::spawn(async move {
+            match fs::read(&filepath) {
+                Ok(file_content) => {
+                    service::submit_solution(
+                        &leaderboard,
+                        &gpu,
+                        &submission_mode,
+                        &filepath,
+                        &file_content,
+                    )
+                    .await
+                }
+                Err(e) => Err(anyhow!("Failed to read file {}: {}", filepath, e)),
             }
-            Err(e) => {
-                return Err(e);
+        });
+        self.submission_task = Some(handle);
+        Ok(())
+    }
+
+    pub async fn check_leaderboard_task(&mut self) {
+        let mut result_to_process: Option<_> = None;
+        if let Some(handle) = self.leaderboards_task.as_mut() {
+            if handle.is_finished() {
+                // Task is finished, take it and await the result.
+                if let Some(h) = self.leaderboards_task.take() {
+                    result_to_process = Some(h.await);
+                }
             }
         }
 
-        Ok(())
+        if let Some(join_result) = result_to_process {
+            match join_result {
+                Ok(Ok(leaderboards)) => {
+                    self.leaderboards = leaderboards;
+                    if !self.leaderboards.is_empty() {
+                        self.leaderboards_state.select(Some(0));
+                    } else {
+                        self.leaderboards_state.select(None); // Ensure selection is cleared if empty
+                    }
+                    self.loading_message = None; // Clear loading on success
+                }
+                Ok(Err(e)) => {
+                    self.set_error_and_quit(format!("Error fetching leaderboards: {}", e));
+                }
+                Err(e) => {
+                    // This usually means the task panicked.
+                    self.set_error_and_quit(format!("Leaderboard fetch task failed: {}", e));
+                }
+            }
+        }
+    }
+
+    pub async fn check_gpu_task(&mut self) {
+        let mut result_to_process: Option<_> = None;
+        if let Some(handle) = self.gpus_task.as_mut() {
+            if handle.is_finished() {
+                if let Some(h) = self.gpus_task.take() {
+                    result_to_process = Some(h.await);
+                }
+            }
+        }
+
+        if let Some(join_result) = result_to_process {
+            match join_result {
+                Ok(Ok(gpus)) => {
+                    self.gpus = gpus;
+                    if self.gpus.is_empty() {
+                        self.set_error_and_quit(
+                            "No GPUs available for the selected leaderboard.".to_string(),
+                        );
+                        self.gpus_state.select(None); // Clear selection if empty
+                    } else {
+                        self.gpus_state.select(Some(0));
+                    }
+                    self.loading_message = None; // Clear loading on success
+                }
+                Ok(Err(e)) => {
+                    self.set_error_and_quit(format!("Error fetching GPUs: {}", e));
+                }
+                Err(e) => {
+                    self.set_error_and_quit(format!("GPU fetch task failed: {}", e));
+                }
+            }
+        }
+    }
+
+    pub async fn check_submission_task(&mut self) {
+        let mut result_to_process: Option<_> = None;
+        if let Some(handle) = self.submission_task.as_mut() {
+            if handle.is_finished() {
+                if let Some(h) = self.submission_task.take() {
+                    result_to_process = Some(h.await);
+                }
+            }
+        }
+
+        if let Some(join_result) = result_to_process {
+            match join_result {
+                Ok(Ok(result)) => {
+                    self.final_status = Some(result);
+                    self.should_quit = true;
+                    self.loading_message = None;
+                }
+                Ok(Err(e)) => {
+                    self.set_error_and_quit(format!("Submission failed: {}", e));
+                }
+                Err(e) => {
+                    self.set_error_and_quit(format!("Submission task failed: {}", e));
+                }
+            }
+        }
     }
 }
 
@@ -294,6 +431,15 @@ pub fn ui(app: &App, frame: &mut Frame) {
         .margin(1)
         .constraints([Constraint::Min(0)].as_ref())
         .split(frame.size());
+
+    if let Some(message) = &app.loading_message {
+        let text = format!("{} (Press Ctrl+C to quit)", message);
+        let paragraph = Paragraph::new(text)
+            .block(Block::default().title("Status").borders(Borders::ALL))
+            .alignment(Alignment::Center);
+        frame.render_widget(paragraph, chunks[0]);
+        return;
+    }
 
     match app.modal_state {
         ModelState::LeaderboardSelection => {
@@ -340,12 +486,8 @@ pub fn ui(app: &App, frame: &mut Frame) {
             frame.render_stateful_widget(list, chunks[0], &mut app.submission_modes_state.clone());
         }
         ModelState::WaitingForResult => {
-            let text = "Submitting solution... press Ctrl+C to quit";
-
-            let paragraph = Paragraph::new(text)
-                .block(Block::default().title("Status").borders(Borders::ALL))
-                .alignment(Alignment::Center);
-
+            let paragraph =
+                Paragraph::new("").block(Block::default().title("Status").borders(Borders::ALL));
             frame.render_widget(paragraph, chunks[0]);
         }
     }
@@ -370,16 +512,10 @@ pub async fn execute() -> Result<()> {
     let (popcorn_directives, has_multiple_gpus) = utils::get_popcorn_directives(filepath)?;
 
     if has_multiple_gpus {
-        println!("Error: multiple GPUs are not yet supported, continue with the first gpu? ({}) [y/N]", popcorn_directives.gpus[0]);
-        print!("Continue? [y/N] ");
-        io::stdout().flush()?;
-
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-
-        if input.trim().to_lowercase() != "y" {
-            return Ok(());
-        }
+        println!(
+            "Warning: multiple GPUs specified, only the first one ({}) will be used.",
+            popcorn_directives.gpus[0]
+        );
     }
 
     // Initialize app
@@ -393,61 +529,65 @@ pub async fn execute() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
 
-    // Load initial data
-    if app.modal_state == ModelState::LeaderboardSelection {
-        match app.load_leaderboards().await {
-            Ok(_) => {}
-            Err(e) => {
-                app.final_status = Some(format!("Error: {}", e));
+    // Perform initial data loading by spawning tasks
+    match app.modal_state {
+        ModelState::LeaderboardSelection => {
+            // Spawn the task, handle immediate spawn error
+            if let Err(e) = app.spawn_load_leaderboards() {
+                // Error during spawning itself (rare)
+                app.final_status = Some(format!("Error starting leaderboard fetch: {}", e));
                 app.should_quit = true;
             }
         }
-    }
-
-    if app.modal_state == ModelState::GpuSelection {
-        match app.load_gpus().await {
-            Ok(_) => {}
-            Err(e) => {
-                app.final_status = Some(format!("Error: {}", e));
+        ModelState::GpuSelection => {
+            // Spawn the task, handle immediate spawn error
+            if let Err(e) = app.spawn_load_gpus() {
+                // Error during spawning itself (e.g., no leaderboard selected)
+                app.final_status = Some(format!("Error starting GPU fetch: {}", e));
                 app.should_quit = true;
             }
         }
+        _ => { /* No initial loading needed for other states */ }
     }
 
     // Main event loop
-    loop {
+    while !app.should_quit {
+        // Draw UI (shows loading screen if loading_message is Some)
         terminal.draw(|frame| ui(&app, frame))?;
 
-        if app.is_loading && app.modal_state == ModelState::WaitingForResult {
-            if let Err(e) = app.submit_solution().await {
-                app.final_status = Some(format!("Error: {}", e));
-                app.should_quit = true;
-            }
-            app.is_loading = false;
-        }
-
-        if app.should_quit {
-            break;
-        }
-
-        if let Event::Key(key) = event::read()? {
-            if key.kind == KeyEventKind::Press {
-                app.handle_key_event(key)?;
+        // Handle events first (to ensure Ctrl+C works during checks below)
+        if crossterm::event::poll(std::time::Duration::from_millis(50))? {
+            if let Event::Key(key) = event::read()? {
+                if key.kind == KeyEventKind::Press {
+                    app.handle_key_event(key)?;
+                    // If event handling caused quit, break early
+                    if app.should_quit {
+                        break;
+                    }
+                }
             }
         }
+
+        app.check_leaderboard_task().await;
+
+        app.check_gpu_task().await;
+
+        app.check_submission_task().await;
     }
 
+    // Cleanup terminal
     terminal.clear()?;
     disable_raw_mode()?;
-
     crossterm::execute!(
         io::stdout(),
         crossterm::terminal::LeaveAlternateScreen,
         crossterm::cursor::Show
     )?;
 
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    // Brief pause allows the terminal to restore properly before printing final output
+    std::thread::sleep(std::time::Duration::from_millis(50));
 
+    // Clear screen again and move cursor to top-left for final output
     crossterm::execute!(
         io::stdout(),
         crossterm::terminal::Clear(crossterm::terminal::ClearType::All),
