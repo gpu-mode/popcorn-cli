@@ -29,6 +29,9 @@ jobs:
           profile: minimal
           override: true
       -
+        name: Set up Zig
+        uses: mlugg/setup-zig@v1
+      -
         name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         if: startsWith(github.ref, 'refs/tags/')
