@@ -1,12 +1,7 @@
 version: 2
 builds:
-  - env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-      - windows
-      - darwin
-    goarch:
-      - amd64
-      - arm64
+  - id: rust
+    builder: rust
+    dir: rust
     binary: popcorn-cli
+    command: build
