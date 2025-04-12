@@ -52,7 +52,8 @@ pub async fn fetch_available_gpus(leaderboard: &str) -> Result<Vec<GpuItem>> {
     
     let status = resp.status();
     if !status.is_success() {
-        return Err(anyhow!("Failed to fetch GPUs: {}", status));
+        let error_text = resp.text().await?;
+        return Err(anyhow!("Server returned status {}: {}", status, error_text));
     }
     
     let gpus: Vec<String> = resp.json().await?;

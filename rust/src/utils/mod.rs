@@ -7,12 +7,12 @@ pub struct PopcornDirectives {
     pub gpus: Vec<String>,
 }
 
-pub fn get_popcorn_directives<P: AsRef<Path>>(filepath: P) -> Result<(PopcornDirectives, Option<String>)> {
+pub fn get_popcorn_directives<P: AsRef<Path>>(filepath: P) -> Result<(PopcornDirectives, bool)> {
     let content = fs::read_to_string(filepath)?;
     
     let mut gpus: Vec<String> = Vec::new();
     let mut leaderboard_name = String::new();
-    let mut error = None;
+    let mut has_multiple_gpus = false;
 
     for line in content.lines() {
         if !line.starts_with("//") && !line.starts_with("#") {
@@ -35,7 +35,7 @@ pub fn get_popcorn_directives<P: AsRef<Path>>(filepath: P) -> Result<(PopcornDir
     }
 
     if gpus.len() > 1 {
-        error = Some(format!("multiple GPUs are not yet supported, continue with the first gpu? ({}) [y/N]", gpus[0]));
+        has_multiple_gpus = true;
         gpus = vec![gpus[0].clone()];
     }
 
@@ -44,7 +44,7 @@ pub fn get_popcorn_directives<P: AsRef<Path>>(filepath: P) -> Result<(PopcornDir
             leaderboard_name,
             gpus,
         },
-        error
+        has_multiple_gpus
     ))
 }
 
