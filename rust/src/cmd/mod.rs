@@ -31,7 +31,9 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Login to Popcorn via Discord
-    Login,
+    Reregister,
+    /// Register to Popcorn via Discord
+    Register,
     /// Submit a solution (default command)
     Submit {
         /// Path to the solution file
@@ -630,7 +632,8 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 
 pub async fn execute(cli: Cli) -> Result<()> {
     match cli.command {
-        Some(Commands::Login) => login::run_login().await,
+        Some(Commands::Reregister) => login::run_auth(true).await,
+        Some(Commands::Register) => login::run_auth(false).await,
         Some(Commands::Submit { filepath }) => {
             let file_to_submit = filepath.or(cli.filepath); // Use filepath from subcommand first, then top-level
             run_submit_tui(file_to_submit).await
