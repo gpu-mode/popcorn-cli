@@ -13,14 +13,6 @@ impl LeaderboardItem {
             task_description,
         }
     }
-
-    pub fn title(&self) -> &str {
-        &self.title_text
-    }
-
-    pub fn description(&self) -> &str {
-        &self.task_description
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -31,10 +23,6 @@ pub struct GpuItem {
 impl GpuItem {
     pub fn new(title_text: String) -> Self {
         Self { title_text }
-    }
-
-    pub fn title(&self) -> &str {
-        &self.title_text
     }
 }
 
@@ -52,14 +40,6 @@ impl SubmissionModeItem {
             description_text,
             value,
         }
-    }
-
-    pub fn title(&self) -> &str {
-        &self.title_text
-    }
-
-    pub fn description(&self) -> &str {
-        &self.description_text
     }
 }
 

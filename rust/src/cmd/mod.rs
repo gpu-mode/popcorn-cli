@@ -1,18 +1,43 @@
-use std::fs;
-use std::io::{self, Write};
+use std::fs::File;
+use std::io::{self, Read};
 use std::path::Path;
 
 use anyhow::{anyhow, Result};
+use clap::{Parser, Subcommand};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen};
 use ratatui::prelude::*;
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Style, Stylize};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 use tokio::task::JoinHandle;
 
 use crate::models::{GpuItem, LeaderboardItem, ModelState, SubmissionModeItem};
 use crate::service;
 use crate::utils;
+
+mod login;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+pub struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
+    /// Optional: Path to the solution file
+    filepath: Option<String>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Login to Popcorn via Discord
+    Login,
+    /// Submit a solution (default command)
+    Submit {
+        /// Path to the solution file
+        filepath: Option<String>,
+    },
+}
 
 pub struct App {
     pub filepath: String,
@@ -264,162 +289,155 @@ impl App {
     }
 
     pub fn spawn_load_leaderboards(&mut self) -> Result<()> {
-        if self.leaderboards_task.is_some() {
-            return Ok(());
-        }
-        self.loading_message = Some("Fetching leaderboards...".to_string());
-        let handle = tokio::spawn(async { service::fetch_leaderboards().await });
-        self.leaderboards_task = Some(handle);
+        let client = service::create_client()?;
+        self.leaderboards_task = Some(tokio::spawn(async move {
+            service::fetch_leaderboards(&client).await
+        }));
+        self.loading_message = Some("Loading leaderboards...".to_string());
         Ok(())
     }
 
     pub fn spawn_load_gpus(&mut self) -> Result<()> {
-        if self.gpus_task.is_some() {
-            return Ok(());
-        }
-        let leaderboard = self
+        let client = service::create_client()?;
+        let leaderboard_name = self
             .selected_leaderboard
             .clone()
-            .ok_or_else(|| anyhow!("Cannot load GPUs without a selected leaderboard."))?;
-
-        self.loading_message = Some("Fetching GPUs...".to_string());
-
-        let handle = tokio::spawn(async move { service::fetch_available_gpus(&leaderboard).await });
-        self.gpus_task = Some(handle);
+            .ok_or_else(|| anyhow!("Leaderboard not selected"))?;
+        self.gpus_task = Some(tokio::spawn(async move {
+            service::fetch_gpus(&client, &leaderboard_name).await
+        }));
+        self.loading_message = Some("Loading GPUs...".to_string());
         Ok(())
     }
 
     pub fn spawn_submit_solution(&mut self) -> Result<()> {
-        if self.submission_task.is_some() {
-            return Ok(());
-        }
+        let client = service::create_client()?;
+        let filepath = self.filepath.clone();
         let leaderboard = self
             .selected_leaderboard
             .clone()
-            .ok_or_else(|| anyhow!("Internal Error: No leaderboard selected"))?;
-
+            .ok_or_else(|| anyhow!("Leaderboard not selected"))?;
         let gpu = self
             .selected_gpu
             .clone()
-            .ok_or_else(|| anyhow!("Internal Error: No GPU selected"))?;
-
-        let submission_mode = self
+            .ok_or_else(|| anyhow!("GPU not selected"))?;
+        let mode = self
             .selected_submission_mode
             .clone()
-            .ok_or_else(|| anyhow!("Internal Error: No submission mode selected"))?;
+            .ok_or_else(|| anyhow!("Submission mode not selected"))?;
 
-        let filepath = self.filepath.clone();
+        // Read file content
+        let mut file = File::open(&filepath)?;
+        let mut file_content = String::new();
+        file.read_to_string(&mut file_content)?;
 
+        self.submission_task = Some(tokio::spawn(async move {
+            service::submit_solution(&client, &filepath, &file_content, &leaderboard, &gpu, &mode)
+                .await
+        }));
         self.loading_message = Some("Submitting solution...".to_string());
-
-        let handle = tokio::spawn(async move {
-            match fs::read(&filepath) {
-                Ok(file_content) => {
-                    service::submit_solution(
-                        &leaderboard,
-                        &gpu,
-                        &submission_mode,
-                        &filepath,
-                        &file_content,
-                    )
-                    .await
-                }
-                Err(e) => Err(anyhow!("Failed to read file {}: {}", filepath, e)),
-            }
-        });
-        self.submission_task = Some(handle);
         Ok(())
     }
 
     pub async fn check_leaderboard_task(&mut self) {
-        let mut result_to_process: Option<_> = None;
-        if let Some(handle) = self.leaderboards_task.as_mut() {
+        if let Some(handle) = &mut self.leaderboards_task {
             if handle.is_finished() {
-                // Task is finished, take it and await the result.
-                if let Some(h) = self.leaderboards_task.take() {
-                    result_to_process = Some(h.await);
-                }
-            }
-        }
+                let task = self.leaderboards_task.take().unwrap();
+                match task.await {
+                    Ok(Ok(leaderboards)) => {
+                        self.leaderboards = leaderboards;
+                        // If a leaderboard was pre-selected (e.g., from directives), try to find and select it
+                        if let Some(selected_name) = &self.selected_leaderboard {
+                            if let Some(index) = self
+                                .leaderboards
+                                .iter()
+                                .position(|lb| &lb.title_text == selected_name)
+                            {
+                                self.leaderboards_state.select(Some(index));
+                                // If GPU was also pre-selected, move to submission mode selection
+                                // Otherwise, spawn GPU loading task
+                                if self.selected_gpu.is_some() {
+                                    self.modal_state = ModelState::SubmissionModeSelection;
+                                } else {
+                                    self.modal_state = ModelState::GpuSelection;
+                                    if let Err(e) = self.spawn_load_gpus() {
+                                        self.set_error_and_quit(format!(
+                                            "Error starting GPU fetch: {}",
+                                            e
+                                        ));
+                                        return; // Exit early on error
+                                    }
+                                }
+                            } else {
+                                // Pre-selected leaderboard not found, reset selection and state
+                                self.selected_leaderboard = None;
+                                self.leaderboards_state.select(Some(0)); // Select first available
+                                self.modal_state = ModelState::LeaderboardSelection;
+                                // Stay here
+                            }
+                        } else {
+                            self.leaderboards_state.select(Some(0)); // Select first if no pre-selection
+                        }
 
-        if let Some(join_result) = result_to_process {
-            match join_result {
-                Ok(Ok(leaderboards)) => {
-                    self.leaderboards = leaderboards;
-                    if !self.leaderboards.is_empty() {
-                        self.leaderboards_state.select(Some(0));
-                    } else {
-                        self.leaderboards_state.select(None); // Ensure selection is cleared if empty
+                        self.loading_message = None;
                     }
-                    self.loading_message = None; // Clear loading on success
-                }
-                Ok(Err(e)) => {
-                    self.set_error_and_quit(format!("Error fetching leaderboards: {}", e));
-                }
-                Err(e) => {
-                    // This usually means the task panicked.
-                    self.set_error_and_quit(format!("Leaderboard fetch task failed: {}", e));
+                    Ok(Err(e)) => {
+                        self.set_error_and_quit(format!("Error fetching leaderboards: {}", e))
+                    }
+                    Err(e) => self.set_error_and_quit(format!("Task join error: {}", e)),
                 }
             }
         }
     }
 
     pub async fn check_gpu_task(&mut self) {
-        let mut result_to_process: Option<_> = None;
-        if let Some(handle) = self.gpus_task.as_mut() {
+        if let Some(handle) = &mut self.gpus_task {
             if handle.is_finished() {
-                if let Some(h) = self.gpus_task.take() {
-                    result_to_process = Some(h.await);
-                }
-            }
-        }
+                let task = self.gpus_task.take().unwrap();
+                match task.await {
+                    Ok(Ok(gpus)) => {
+                        self.gpus = gpus;
+                        // If a GPU was pre-selected, try to find and select it
+                        if let Some(selected_name) = &self.selected_gpu {
+                            if let Some(index) = self
+                                .gpus
+                                .iter()
+                                .position(|gpu| &gpu.title_text == selected_name)
+                            {
+                                self.gpus_state.select(Some(index));
+                                self.modal_state = ModelState::SubmissionModeSelection;
+                            // Move to next step
+                            } else {
+                                // Pre-selected GPU not found, reset selection
+                                self.selected_gpu = None;
+                                self.gpus_state.select(Some(0)); // Select first available
+                                self.modal_state = ModelState::GpuSelection; // Stay here
+                            }
+                        } else {
+                            self.gpus_state.select(Some(0)); // Select first if no pre-selection
+                        }
 
-        if let Some(join_result) = result_to_process {
-            match join_result {
-                Ok(Ok(gpus)) => {
-                    self.gpus = gpus;
-                    if self.gpus.is_empty() {
-                        self.set_error_and_quit(
-                            "No GPUs available for the selected leaderboard.".to_string(),
-                        );
-                        self.gpus_state.select(None); // Clear selection if empty
-                    } else {
-                        self.gpus_state.select(Some(0));
+                        self.loading_message = None;
                     }
-                    self.loading_message = None; // Clear loading on success
-                }
-                Ok(Err(e)) => {
-                    self.set_error_and_quit(format!("Error fetching GPUs: {}", e));
-                }
-                Err(e) => {
-                    self.set_error_and_quit(format!("GPU fetch task failed: {}", e));
+                    Ok(Err(e)) => self.set_error_and_quit(format!("Error fetching GPUs: {}", e)),
+                    Err(e) => self.set_error_and_quit(format!("Task join error: {}", e)),
                 }
             }
         }
     }
 
     pub async fn check_submission_task(&mut self) {
-        let mut result_to_process: Option<_> = None;
-        if let Some(handle) = self.submission_task.as_mut() {
+        if let Some(handle) = &mut self.submission_task {
             if handle.is_finished() {
-                if let Some(h) = self.submission_task.take() {
-                    result_to_process = Some(h.await);
-                }
-            }
-        }
-
-        if let Some(join_result) = result_to_process {
-            match join_result {
-                Ok(Ok(result)) => {
-                    self.final_status = Some(result);
-                    self.should_quit = true;
-                    self.loading_message = None;
-                }
-                Ok(Err(e)) => {
-                    self.set_error_and_quit(format!("Submission failed: {}", e));
-                }
-                Err(e) => {
-                    self.set_error_and_quit(format!("Submission task failed: {}", e));
+                let task = self.submission_task.take().unwrap();
+                match task.await {
+                    Ok(Ok(status)) => {
+                        self.final_status = Some(status);
+                        self.should_quit = true; // Quit after showing final status
+                        self.loading_message = None;
+                    }
+                    Ok(Err(e)) => self.set_error_and_quit(format!("Submission error: {}", e)),
+                    Err(e) => self.set_error_and_quit(format!("Task join error: {}", e)),
                 }
             }
         }
@@ -427,177 +445,293 @@ impl App {
 }
 
 pub fn ui(app: &App, frame: &mut Frame) {
-    let chunks = Layout::default()
-        .margin(1)
+    let main_layout = Layout::default()
+        .direction(Direction::Vertical)
         .constraints([Constraint::Min(0)].as_ref())
         .split(frame.size());
 
-    if let Some(message) = &app.loading_message {
-        let text = format!("{} (Press Ctrl+C to quit)", message);
-        let paragraph = Paragraph::new(text)
-            .block(Block::default().title("Status").borders(Borders::ALL))
+    // Determine the area available for the list *before* the match statement
+    let list_area = main_layout[0];
+    // Calculate usable width for text wrapping (subtract borders, padding, highlight symbol)
+    let available_width = list_area.width.saturating_sub(4) as usize;
+
+    if let Some(ref msg) = app.loading_message {
+        let loading_paragraph = Paragraph::new(msg.clone())
+            .block(Block::default().title("Loading").borders(Borders::ALL))
             .alignment(Alignment::Center);
-        frame.render_widget(paragraph, chunks[0]);
-        return;
+
+        let area = centered_rect(60, 20, frame.size());
+        frame.render_widget(loading_paragraph, area);
+        return; // Don't render anything else while loading
     }
+
+    let list_block = Block::default().borders(Borders::ALL);
+    let list_style = Style::default().fg(Color::White);
 
     match app.modal_state {
         ModelState::LeaderboardSelection => {
             let items: Vec<ListItem> = app
                 .leaderboards
                 .iter()
-                .map(|item| ListItem::new(format!("{}\n{}", item.title(), item.description())))
+                .map(|lb| {
+                    let title_line = Line::from(Span::styled(
+                        lb.title_text.clone(),
+                        Style::default().fg(Color::White).bold(),
+                    ));
+                    // Create lines for the description, splitting by newline
+                    let mut lines = vec![title_line];
+                    for desc_part in lb.task_description.split('\n') {
+                        lines.push(Line::from(Span::styled(
+                            desc_part.to_string(),
+                            Style::default().fg(Color::Gray).dim(),
+                        )));
+                    }
+                    ListItem::new(lines) // Use the combined vector of lines
+                })
                 .collect();
-
             let list = List::new(items)
-                .block(Block::default().title("Leaderboards").borders(Borders::ALL))
-                .highlight_style(Style::default().bg(Color::White).fg(Color::Black));
-
-            frame.render_stateful_widget(list, chunks[0], &mut app.leaderboards_state.clone());
+                .block(list_block.title("Select Leaderboard"))
+                .style(list_style)
+                .highlight_style(Style::default().bg(Color::DarkGray))
+                .highlight_symbol("> ");
+            frame.render_stateful_widget(list, main_layout[0], &mut app.leaderboards_state.clone());
         }
         ModelState::GpuSelection => {
             let items: Vec<ListItem> = app
                 .gpus
                 .iter()
-                .map(|item| ListItem::new(item.title()))
+                .map(|gpu| {
+                    // GPUs still only have a title line
+                    let line = Line::from(vec![Span::styled(
+                        gpu.title_text.clone(),
+                        Style::default().fg(Color::White).bold(),
+                    )]);
+                    ListItem::new(line) // Keep as single line
+                })
                 .collect();
-
             let list = List::new(items)
-                .block(Block::default().title("GPUs").borders(Borders::ALL))
-                .highlight_style(Style::default().bg(Color::White).fg(Color::Black));
-
-            frame.render_stateful_widget(list, chunks[0], &mut app.gpus_state.clone());
+                .block(list_block.title(format!(
+                    "Select GPU for '{}'",
+                    app.selected_leaderboard.as_deref().unwrap_or("N/A")
+                )))
+                .style(list_style)
+                .highlight_style(Style::default().bg(Color::DarkGray))
+                .highlight_symbol("> ");
+            frame.render_stateful_widget(list, main_layout[0], &mut app.gpus_state.clone());
         }
         ModelState::SubmissionModeSelection => {
             let items: Vec<ListItem> = app
                 .submission_modes
                 .iter()
-                .map(|item| ListItem::new(format!("{}\n{}", item.title(), item.description())))
+                .map(|mode| {
+                    let title_line = Line::from(Span::styled(
+                        mode.title_text.clone(),
+                        Style::default().fg(Color::White).bold(),
+                    ));
+
+                    let mut lines = vec![title_line];
+                    let description_text = &mode.description_text;
+
+                    // Manual wrapping logic
+                    if available_width > 0 {
+                        let mut current_line = String::with_capacity(available_width);
+                        for word in description_text.split_whitespace() {
+                            // Check if the word itself is too long
+                            if word.len() > available_width {
+                                // If a line is currently being built, push it first
+                                if !current_line.is_empty() {
+                                    lines.push(Line::from(Span::styled(
+                                        current_line.clone(),
+                                        Style::default().fg(Color::Gray).dim(),
+                                    )));
+                                    current_line.clear();
+                                }
+                                // Push the long word on its own line
+                                lines.push(Line::from(Span::styled(
+                                    word.to_string(),
+                                    Style::default().fg(Color::Gray).dim(),
+                                )));
+                            } else if current_line.is_empty() {
+                                // Start a new line
+                                current_line.push_str(word);
+                            } else if current_line.len() + word.len() + 1 <= available_width {
+                                // Add word to current line
+                                current_line.push(' ');
+                                current_line.push_str(word);
+                            } else {
+                                // Word doesn't fit, push the completed line
+                                lines.push(Line::from(Span::styled(
+                                    current_line.clone(),
+                                    Style::default().fg(Color::Gray).dim(),
+                                )));
+                                // Start a new line with the current word
+                                current_line.clear();
+                                current_line.push_str(word);
+                            }
+                        }
+                        // Push the last remaining line if it's not empty
+                        if !current_line.is_empty() {
+                            lines.push(Line::from(Span::styled(
+                                current_line,
+                                Style::default().fg(Color::Gray).dim(),
+                            )));
+                        }
+                    } else {
+                        // Fallback: push the original description as one line if width is zero
+                        lines.push(Line::from(Span::styled(
+                            description_text.clone(),
+                            Style::default().fg(Color::Gray).dim(),
+                        )));
+                    }
+
+                    ListItem::new(lines)
+                })
                 .collect();
-
             let list = List::new(items)
-                .block(
-                    Block::default()
-                        .title("Submission Mode")
-                        .borders(Borders::ALL),
-                )
-                .highlight_style(Style::default().bg(Color::White).fg(Color::Black));
-
-            frame.render_stateful_widget(list, chunks[0], &mut app.submission_modes_state.clone());
+                .block(list_block.title(format!(
+                    "Select Submission Mode for '{}' on '{}'",
+                    app.selected_leaderboard.as_deref().unwrap_or("N/A"),
+                    app.selected_gpu.as_deref().unwrap_or("N/A")
+                )))
+                .style(list_style)
+                .highlight_style(Style::default().bg(Color::DarkGray))
+                .highlight_symbol("> ");
+            frame.render_stateful_widget(
+                list,
+                main_layout[0],
+                &mut app.submission_modes_state.clone(),
+            );
         }
         ModelState::WaitingForResult => {
-            let paragraph =
-                Paragraph::new("").block(Block::default().title("Status").borders(Borders::ALL));
-            frame.render_widget(paragraph, chunks[0]);
+            // This state is handled by the loading message check at the beginning
         }
     }
 }
 
-pub async fn execute() -> Result<()> {
-    let args: Vec<String> = std::env::args().collect();
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
 
-    if args.len() < 2 {
-        println!("Usage: popcorn <filepath>");
-        return Ok(());
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
+}
+
+pub async fn execute(cli: Cli) -> Result<()> {
+    match cli.command {
+        Some(Commands::Login) => login::run_login().await,
+        Some(Commands::Submit { filepath }) => {
+            let file_to_submit = filepath.or(cli.filepath); // Use filepath from subcommand first, then top-level
+            run_submit_tui(file_to_submit).await
+        }
+        None => {
+            // Default behavior: run submit TUI, potentially with top-level filepath
+            run_submit_tui(cli.filepath).await
+        }
+    }
+}
+
+async fn run_submit_tui(filepath: Option<String>) -> Result<()> {
+    let file_to_submit = match filepath {
+        Some(fp) => fp,
+        None => {
+            // Prompt user for filepath if not provided
+            println!("Please enter the path to your solution file:");
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            input.trim().to_string()
+        }
+    };
+
+    if !Path::new(&file_to_submit).exists() {
+        return Err(anyhow!("File not found: {}", file_to_submit));
     }
 
-    let filepath = &args[1];
-    let path = Path::new(filepath);
-
-    if !path.exists() {
-        println!("File does not exist: {}", filepath);
-        return Ok(());
-    }
-
-    let (popcorn_directives, has_multiple_gpus) = utils::get_popcorn_directives(filepath)?;
+    let (directives, has_multiple_gpus) = utils::get_popcorn_directives(&file_to_submit)?;
 
     if has_multiple_gpus {
-        println!(
-            "Warning: multiple GPUs specified, only the first one ({}) will be used.",
-            popcorn_directives.gpus[0]
-        );
+        return Err(anyhow!(
+            "Multiple GPUs are not supported yet. Please specify only one GPU."
+        ));
     }
 
-    // Initialize app
-    let mut app = App::new(filepath);
-    app.initialize_with_directives(popcorn_directives);
+    let mut app = App::new(&file_to_submit);
+    app.initialize_with_directives(directives);
 
-    // Initialize terminal
     enable_raw_mode()?;
-    crossterm::execute!(io::stdout(), EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(io::stdout());
+    let mut stdout = io::stdout();
+    crossterm::execute!(stdout, EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    terminal.clear()?;
 
-    // Perform initial data loading by spawning tasks
-    match app.modal_state {
-        ModelState::LeaderboardSelection => {
-            // Spawn the task, handle immediate spawn error
-            if let Err(e) = app.spawn_load_leaderboards() {
-                // Error during spawning itself (rare)
-                app.final_status = Some(format!("Error starting leaderboard fetch: {}", e));
-                app.should_quit = true;
-            }
+    if app.modal_state == ModelState::LeaderboardSelection {
+        if let Err(e) = app.spawn_load_leaderboards() {
+            // Cleanup terminal before exiting on initial load error
+            disable_raw_mode()?;
+            crossterm::execute!(
+                terminal.backend_mut(),
+                crossterm::terminal::LeaveAlternateScreen
+            )?;
+            terminal.show_cursor()?;
+            return Err(anyhow!("Error starting leaderboard fetch: {}", e));
         }
-        ModelState::GpuSelection => {
-            // Spawn the task, handle immediate spawn error
-            if let Err(e) = app.spawn_load_gpus() {
-                // Error during spawning itself (e.g., no leaderboard selected)
-                app.final_status = Some(format!("Error starting GPU fetch: {}", e));
-                app.should_quit = true;
-            }
+    } else if app.modal_state == ModelState::GpuSelection {
+        if let Err(e) = app.spawn_load_gpus() {
+            // Cleanup terminal before exiting on initial load error
+            disable_raw_mode()?;
+            crossterm::execute!(
+                terminal.backend_mut(),
+                crossterm::terminal::LeaveAlternateScreen
+            )?;
+            terminal.show_cursor()?;
+            return Err(anyhow!("Error starting GPU fetch: {}", e));
         }
-        _ => { /* No initial loading needed for other states */ }
     }
 
-    // Main event loop
+    // Main application loop
     while !app.should_quit {
-        // Draw UI (shows loading screen if loading_message is Some)
-        terminal.draw(|frame| ui(&app, frame))?;
+        terminal.draw(|f| ui(&app, f))?;
 
-        // Handle events first (to ensure Ctrl+C works during checks below)
-        if crossterm::event::poll(std::time::Duration::from_millis(50))? {
+        // Check for finished async tasks without blocking drawing
+        app.check_leaderboard_task().await;
+        app.check_gpu_task().await;
+        app.check_submission_task().await;
+
+        // Handle input events
+        if event::poll(std::time::Duration::from_millis(50))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
                     app.handle_key_event(key)?;
-                    // If event handling caused quit, break early
-                    if app.should_quit {
-                        break;
-                    }
                 }
             }
         }
-
-        app.check_leaderboard_task().await;
-
-        app.check_gpu_task().await;
-
-        app.check_submission_task().await;
     }
 
-    // Cleanup terminal
-    terminal.clear()?;
+    // Restore terminal
     disable_raw_mode()?;
     crossterm::execute!(
-        io::stdout(),
-        crossterm::terminal::LeaveAlternateScreen,
-        crossterm::cursor::Show
+        terminal.backend_mut(),
+        crossterm::terminal::LeaveAlternateScreen
     )?;
-
-    // Brief pause allows the terminal to restore properly before printing final output
-    std::thread::sleep(std::time::Duration::from_millis(50));
-
-    // Clear screen again and move cursor to top-left for final output
-    crossterm::execute!(
-        io::stdout(),
-        crossterm::terminal::Clear(crossterm::terminal::ClearType::All),
-        crossterm::cursor::MoveTo(0, 0)
-    )?;
+    terminal.show_cursor()?;
 
     utils::display_ascii_art();
 
     if let Some(status) = app.final_status {
-        println!("\nResult:\n\n{}\n", status);
+        println!("{}", status);
+    } else {
+        println!("Operation cancelled."); // Or some other default message if quit early
     }
 
     Ok(())

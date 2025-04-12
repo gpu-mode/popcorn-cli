@@ -8,11 +8,18 @@ use std::time::Duration;
 
 use crate::models::{GpuItem, LeaderboardItem};
 
-pub async fn fetch_leaderboards() -> Result<Vec<LeaderboardItem>> {
+// Helper function to create a reusable reqwest client
+pub fn create_client() -> Result<Client> {
+    Client::builder()
+        .timeout(Duration::from_secs(60)) // Set a default timeout
+        .build()
+        .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))
+}
+
+pub async fn fetch_leaderboards(client: &Client) -> Result<Vec<LeaderboardItem>> {
     let base_url =
         env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
 
-    let client = Client::new();
     let resp = client
         .get(format!("{}/leaderboards", base_url))
         .timeout(Duration::from_secs(30))
@@ -48,11 +55,10 @@ pub async fn fetch_leaderboards() -> Result<Vec<LeaderboardItem>> {
     Ok(leaderboard_items)
 }
 
-pub async fn fetch_available_gpus(leaderboard: &str) -> Result<Vec<GpuItem>> {
+pub async fn fetch_gpus(client: &Client, leaderboard: &str) -> Result<Vec<GpuItem>> {
     let base_url =
         env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
 
-    let client = Client::new();
     let resp = client
         .get(format!("{}/gpus/{}", base_url, leaderboard))
         .timeout(Duration::from_secs(120))
@@ -73,22 +79,23 @@ pub async fn fetch_available_gpus(leaderboard: &str) -> Result<Vec<GpuItem>> {
 }
 
 pub async fn submit_solution<P: AsRef<Path>>(
+    client: &Client,
+    filepath: P,
+    file_content: &str,
     leaderboard: &str,
     gpu: &str,
     submission_mode: &str,
-    filename: P,
-    file_content: &[u8],
 ) -> Result<String> {
     let base_url =
         env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
 
-    let filename = filename
+    let filename = filepath
         .as_ref()
         .file_name()
-        .ok_or_else(|| anyhow!("Invalid filename"))?
+        .ok_or_else(|| anyhow!("Invalid filepath"))?
         .to_string_lossy();
 
-    let part = Part::bytes(file_content.to_vec()).file_name(filename.to_string());
+    let part = Part::bytes(file_content.as_bytes().to_vec()).file_name(filename.to_string());
 
     let form = Form::new().part("file", part);
 
@@ -100,7 +107,6 @@ pub async fn submit_solution<P: AsRef<Path>>(
         submission_mode.to_lowercase()
     );
 
-    let client = Client::new();
     let resp = client
         .post(&url)
         .multipart(form)
