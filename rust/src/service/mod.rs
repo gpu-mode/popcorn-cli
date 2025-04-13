@@ -25,7 +25,7 @@ pub fn create_client(cli_id: Option<String>) -> Result<Client> {
     }
 
     Client::builder()
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_secs(180))
         .default_headers(default_headers)
         .build()
         .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))
@@ -125,7 +125,7 @@ pub async fn submit_solution<P: AsRef<Path>>(
     let resp = client
         .post(&url)
         .multipart(form)
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_secs(180))
         .send()
         .await?;
 
@@ -137,7 +137,7 @@ pub async fn submit_solution<P: AsRef<Path>>(
 
     let result: Value = resp.json().await?;
 
-    let pretty_result = match result.get("result") {
+    let pretty_result = match result.get("results") {
         Some(result_obj) => serde_json::to_string_pretty(result_obj)?,
         None => return Err(anyhow!("Invalid response structure")),
     };
