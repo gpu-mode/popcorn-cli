@@ -35,6 +35,10 @@ jobs:
         name: Install zigbuild
         run: cargo install cargo-zigbuild
       -
+        name: Install openssl
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
+      -
         name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         if: startsWith(github.ref, 'refs/tags/')
