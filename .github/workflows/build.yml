@@ -22,13 +22,6 @@ jobs:
         with:
           fetch-depth: 0
       -
-        name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
-      -
         name: Set up Zig
         uses: mlugg/setup-zig@v1
       -
