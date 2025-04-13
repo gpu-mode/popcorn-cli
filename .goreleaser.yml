@@ -4,4 +4,3 @@ builds:
     builder: rust
     dir: rust
     binary: popcorn-cli
-    command: zigbuild
