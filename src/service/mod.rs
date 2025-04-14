@@ -118,7 +118,7 @@ pub async fn submit_solution<P: AsRef<Path>>(
         "{}/{}/{}/{}",
         base_url,
         leaderboard.to_lowercase(),
-        gpu.to_lowercase(),
+        gpu,
         submission_mode.to_lowercase()
     );
 
