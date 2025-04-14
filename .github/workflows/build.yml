@@ -98,8 +98,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            popcorn-cli-linux.tar.gz
-            popcorn-cli-windows.zip
-            popcorn-cli-macos.tar.gz
+            popcorn-cli-linux.tar.gz/popcorn-cli-linux.tar.gz
+            popcorn-cli-windows.zip/popcorn-cli-windows.zip
+            popcorn-cli-macos.tar.gz/popcorn-cli-macos.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
