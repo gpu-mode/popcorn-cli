@@ -55,18 +55,8 @@ impl App {
                 "leaderboard".to_string(),
             ),
             SubmissionModeItem::new(
-                "Private".to_string(),
-                "TODO".to_string(),
-                "private".to_string(),
-            ),
-            SubmissionModeItem::new(
-                "Script".to_string(),
-                "TODO".to_string(),
-                "script".to_string(),
-            ),
-            SubmissionModeItem::new(
                 "Profile".to_string(),
-                "TODO".to_string(),
+                "Work in progress...".to_string(),
                 "profile".to_string(),
             ),
         ];
