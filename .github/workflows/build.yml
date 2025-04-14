@@ -22,29 +22,22 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: app-linux-amd64
-            asset_name: app-linux-amd64.tar.gz
+            artifact_name: popcorn-cli
+            asset_name: popcorn-cli-linux.tar.gz
             compress_cmd: tar -czf
             compress_ext: .tar.gz
           
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: app-windows-amd64
-            asset_name: app-windows-amd64.zip
+            artifact_name: popcorn-cli
+            asset_name: popcorn-cli-windows.zip
             compress_cmd: 7z a
             compress_ext: .zip
           
           - os: macos-latest
-            target: x86_64-apple-darwin
-            artifact_name: app-macos-amd64
-            asset_name: app-macos-amd64.tar.gz
-            compress_cmd: tar -czf
-            compress_ext: .tar.gz
-          
-          - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: app-macos-arm64
-            asset_name: app-macos-arm64.tar.gz
+            artifact_name: popcorn-cli
+            asset_name: popcorn-cli-macos.tar.gz
             compress_cmd: tar -czf
             compress_ext: .tar.gz
 
@@ -76,10 +69,10 @@ jobs:
         run: |
           mkdir -p dist
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            cp target/${{ matrix.target }}/release/your_app_name.exe dist/your_app_name.exe
+            cp target/${{ matrix.target }}/release/popcorn-cli.exe dist/popcorn-cli.exe
           else
-            cp target/${{ matrix.target }}/release/your_app_name dist/your_app_name
-            chmod +x dist/your_app_name
+            cp target/${{ matrix.target }}/release/popcorn-cli dist/popcorn-cli
+            chmod +x dist/popcorn-cli
           fi
           cd dist
           ${{ matrix.compress_cmd }} ../${{ matrix.asset_name }} *
@@ -105,10 +98,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            app-linux-amd64/app-linux-amd64.tar.gz
-            app-linux-arm64/app-linux-arm64.tar.gz
-            app-windows-amd64/app-windows-amd64.zip
-            app-macos-amd64/app-macos-amd64.tar.gz
-            app-macos-arm64/app-macos-arm64.tar.gz
+            popcorn-cli/popcorn-cli-linux.tar.gz
+            popcorn-cli/popcorn-cli-windows.zip
+            popcorn-cli/popcorn-cli-macos.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
