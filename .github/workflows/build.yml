@@ -80,7 +80,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
+          name: ${{ matrix.asset_name }}
           path: ${{ matrix.asset_name }}
           retention-days: 7
   
@@ -98,8 +98,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            popcorn-cli/popcorn-cli-linux.tar.gz
-            popcorn-cli/popcorn-cli-windows.zip
-            popcorn-cli/popcorn-cli-macos.tar.gz
+            popcorn-cli-linux.tar.gz
+            popcorn-cli-windows.zip
+            popcorn-cli-macos.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
