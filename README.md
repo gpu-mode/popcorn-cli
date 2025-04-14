@@ -31,7 +31,6 @@ popcorn-cli submit <submission-file>
 
 The interactive CLI will guide you through the process of:
 1. Selecting a leaderboard
-2 Selecting GPU options
+2. Selecting GPU options
 3. Setting submission mode
 4. Submitting your work
-
