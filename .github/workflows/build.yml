@@ -8,37 +8,115 @@ on:
   
   # Keep pull request builds for testing
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  release:
-    name: release ${{ matrix.target }}
-    runs-on: ubuntu-latest
+  build:
+    name: Build
+    needs: test
+    runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false
       matrix:
         include:
-          - target: x86_64-pc-windows-gnu
-            archive: zip
-          - target: x86_64-unknown-linux-musl
-            archive: tar.gz tar.xz tar.zst
-          - target: x86_64-apple-darwin
-            archive: zip
-          - target: aarch64-unknown-linux-gnu
-            archive: tar.gz tar.xz tar.zst
-          - target: aarch64-apple-darwin
-            archive: zip
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: app-linux-amd64
+            asset_name: app-linux-amd64.tar.gz
+            compress_cmd: tar -czf
+            compress_ext: .tar.gz
+          
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact_name: app-linux-arm64
+            asset_name: app-linux-arm64.tar.gz
+            compress_cmd: tar -czf
+            compress_ext: .tar.gz
+          
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: app-windows-amd64
+            asset_name: app-windows-amd64.zip
+            compress_cmd: 7z a
+            compress_ext: .zip
+          
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: app-macos-amd64
+            asset_name: app-macos-amd64.tar.gz
+            compress_cmd: tar -czf
+            compress_ext: .tar.gz
+          
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: app-macos-arm64
+            asset_name: app-macos-arm64.tar.gz
+            compress_cmd: tar -czf
+            compress_ext: .tar.gz
 
     steps:
-      - uses: actions/checkout@master
-      - name: Compile and release
-        uses: rust-build/rust-build.action@v1.4.5
-        id: compile
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      
+      - name: Set up cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      
+      - name: Install cross-compilation dependencies (Linux ARM)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+      
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+      
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            cp target/${{ matrix.target }}/release/your_app_name.exe dist/your_app_name.exe
+          else
+            cp target/${{ matrix.target }}/release/your_app_name dist/your_app_name
+            chmod +x dist/your_app_name
+          fi
+          cd dist
+          ${{ matrix.compress_cmd }} ../${{ matrix.asset_name }} *
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.asset_name }}
+          retention-days: 7
+  
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            app-linux-amd64/app-linux-amd64.tar.gz
+            app-linux-arm64/app-linux-arm64.tar.gz
+            app-windows-amd64/app-windows-amd64.zip
+            app-macos-amd64/app-macos-amd64.tar.gz
+            app-macos-arm64/app-macos-arm64.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          TOOLCHAIN_VERSION: 1.83.0
-          RUSTTARGET: ${{ matrix.target }}
-          ARCHIVE_TYPES: ${{ matrix.archive }}
