@@ -27,3 +27,4 @@ static_ssl = ['openssl/vendored']
 [dependencies.openssl]
 optional = true
 version = "0.10"
+features = ["vendored"]
