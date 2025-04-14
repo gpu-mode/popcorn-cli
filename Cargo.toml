@@ -21,10 +21,3 @@ webbrowser = "0.8"
 base64-url = "3.0.0"
 urlencoding = "2.1.3"
 
-[features]
-static_ssl = ['openssl/vendored']
-
-[dependencies.openssl]
-optional = true
-version = "0.10"
-features = ["vendored"]
