@@ -56,10 +56,6 @@ struct AuthInitResponse {
 pub async fn run_auth(reset: bool, auth_provider: &str) -> Result<()> {
     println!("Attempting authentication via {}...", auth_provider);
 
-    if auth_provider == "discord" {
-        panic!("Discord authentication is not supported yet... WIP");
-    }
-
     let popcorn_api_url = std::env::var("POPCORN_API_URL")
         .map_err(|_| anyhow!("POPCORN_API_URL environment variable not set"))?;
 
@@ -99,9 +95,12 @@ pub async fn run_auth(reset: bool, auth_provider: &str) -> Result<()> {
         }
         "github" => {
             let client_id = "Ov23lieFd2onYk4OnKIR";
+            let redirect_uri =
+                "https://discord-cluster-manager-1f6c4782e60a.herokuapp.com/auth/cli/github";
+            let encoded_redirect_uri = urlencoding::encode(redirect_uri);
             format!(
-                "https://github.com/login/oauth/authorize?client_id={}&state={}",
-                client_id, state_b64
+                "https://github.com/login/oauth/authorize?client_id={}&state={}&redirect_uri={}",
+                client_id, state_b64, encoded_redirect_uri
             )
         }
         _ => {
