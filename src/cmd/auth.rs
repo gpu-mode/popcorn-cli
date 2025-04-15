@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use serde_yaml;
 use std::fs::{File, OpenOptions};
 use std::path::PathBuf;
-use urlencoding;
 use webbrowser;
 
 use crate::service; // Assuming service::create_client is needed
@@ -57,6 +56,10 @@ struct AuthInitResponse {
 pub async fn run_auth(reset: bool, auth_provider: &str) -> Result<()> {
     println!("Attempting authentication via {}...", auth_provider);
 
+    if auth_provider == "discord" {
+        panic!("Discord authentication is not supported yet... WIP");
+    }
+
     let popcorn_api_url = std::env::var("POPCORN_API_URL")
         .map_err(|_| anyhow!("POPCORN_API_URL environment variable not set"))?;
 
@@ -91,17 +94,14 @@ pub async fn run_auth(reset: bool, auth_provider: &str) -> Result<()> {
 
     let auth_url = match auth_provider {
         "discord" => {
-            let base_auth_url = "https://discord.com/oauth2/authorize?client_id=1357446383497511096&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A8000%2Fauth%2Fcli%2Fdiscord&scope=identify";
+            let base_auth_url = "https://discord.com/oauth2/authorize?client_id=1361364685491802243&response_type=code&redirect_uri=https%3A%2F%2Fdiscord-cluster-manager-1f6c4782e60a.herokuapp.com%2Fauth%2Fcli%2Fdiscord&scope=identify";
             format!("{}&state={}", base_auth_url, state_b64)
         }
         "github" => {
             let client_id = "Ov23lieFd2onYk4OnKIR";
-            let redirect_uri = "http://localhost:8000/auth/cli/github";
-            // URL encode the redirect URI
-            let encoded_redirect_uri = urlencoding::encode(redirect_uri);
             format!(
-                "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&state={}",
-                client_id, encoded_redirect_uri, state_b64
+                "https://github.com/login/oauth/authorize?client_id={}&state={}",
+                client_id, state_b64
             )
         }
         _ => {
