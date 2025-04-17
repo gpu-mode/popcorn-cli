@@ -16,7 +16,7 @@ This app is written in Rust, so you can just install it via `cargo install`
 
 ## Usage
 
-Set the `POPCORN_API_URL` environment variable to the URL of the Popcorn API. You can get this from the [GPU Mode Discord server](https://discord.gg/gpumode).
+Set the `POPCORN_API_URL` environment variable to the URL of the Popcorn API. You can get this from the [GPU Mode Discord server](https://discord.gg/gpumode) - go to the submissions chanel and `/get-api-url`
 
 Then, you need to be registered to use this app. You can register by running: `popcorn-cli register [discord|github]`. We strongly reccomend using your Discord account to register, as this will match your submissions to your Discord account.
 Once you're registered, there is a file created in your `$HOME` called `.popcorn-cli.yaml` that contains your registration token. This token is sent with each request.
