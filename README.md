@@ -15,7 +15,7 @@ Tested on linux and mac but should just work on Windows as well.
 ### Option 2: Building from source
 
 1. Download rust `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-2. `cd popcorn-cli && cargo install --path .`
+2. `cd popcorn-cli && ./build.sh`
 
 ## Authentication
 
