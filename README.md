@@ -21,7 +21,7 @@ Tested on linux and mac but should just work on Windows as well.
 
 Since we're effectively giving out GPUs for free we rely on either github or discord authentication to prove that you're a real human before you access our service.
 
-1. Go to the [GPU Mode Discord server](https://discord.gg/gpumode) and type in `/get-api-url/`
+1. Go to the [GPU Mode Discord server](https://discord.gg/gpumode) and type in `/get-api-url`
 2. Copy paste that url out `export POPCORN_API_URL="result_of_get_api_url"`
 3. We recommend you authenticate via your Discord as this will guarantee that your name will show up correctly on the leaderboard, you can do this via `popcorn-cli register discord`. However in case this doesn't work for you we also support Github based authentication with `popcorn-cli register github`
 4. To ensure the above worked you can run `cat $HOME/.popcorn.yaml` which should print your client ID which is what will be sent to us on every request
