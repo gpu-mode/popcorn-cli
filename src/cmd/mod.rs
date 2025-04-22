@@ -63,6 +63,8 @@ enum Commands {
     },
     Submit {
         filepath: Option<String>,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
 }
 
@@ -82,7 +84,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
             };
             auth::run_auth(false, provider_str).await
         }
-        Some(Commands::Submit { filepath }) => {
+        Some(Commands::Submit { filepath, output }) => {
             let config = load_config()?;
             let cli_id = config.cli_id.ok_or_else(|| {
                 anyhow!(
@@ -92,7 +94,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 )
             })?;
             let file_to_submit = filepath.or(cli.filepath);
-            submit::run_submit_tui(file_to_submit, cli_id).await
+            submit::run_submit_tui(file_to_submit, cli_id, output).await
         }
         None => {
             let config = load_config()?;
@@ -103,7 +105,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
                         .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
                 )
             })?;
-            submit::run_submit_tui(cli.filepath, cli_id).await
+            submit::run_submit_tui(cli.filepath, cli_id, None).await
         }
     }
 }

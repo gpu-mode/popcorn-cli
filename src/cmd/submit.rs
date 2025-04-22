@@ -1,6 +1,6 @@
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{self, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -596,7 +596,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         .split(popup_layout[1])[1]
 }
 
-pub async fn run_submit_tui(filepath: Option<String>, cli_id: String) -> Result<()> {
+pub async fn run_submit_tui(filepath: Option<String>, cli_id: String, output: Option<PathBuf>) -> Result<()> {
     let file_to_submit = match filepath {
         Some(fp) => fp,
         None => {
@@ -684,6 +684,9 @@ pub async fn run_submit_tui(filepath: Option<String>, cli_id: String) -> Result<
 
     if let Some(status) = app.final_status {
         println!("{}", status);
+        if let Some(output) = output {
+            fs::write(output, status.as_bytes())?;
+        }
     } else {
         println!("Operation cancelled."); // Or some other default message if quit early
     }
