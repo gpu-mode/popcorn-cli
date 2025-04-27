@@ -43,6 +43,18 @@ pub struct Cli {
 
     /// Optional: Path to the solution file
     filepath: Option<String>,
+
+    /// Optional: Directly specify the GPU to use (e.g., "mi300")
+    #[arg(long)]
+    pub gpu: Option<String>,
+
+    /// Optional: Directly specify the leaderboard (e.g., "fp8")
+    #[arg(long)]
+    pub leaderboard: Option<String>,
+
+    /// Optional: Specify submission mode (test, benchmark, leaderboard, profile)
+    #[arg(long)]
+    pub mode: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -91,10 +103,19 @@ pub async fn execute(cli: Cli) -> Result<()> {
                         .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
                 )
             })?;
-            let file_to_submit = filepath.or(cli.filepath);
-            submit::run_submit_tui(file_to_submit, cli_id).await
+            // Extract values and pass them individually
+            let final_filepath = filepath.or(cli.filepath);
+            submit::run_submit_tui(
+                final_filepath,
+                cli.gpu,
+                cli.leaderboard,
+                cli.mode,
+                cli_id,
+            )
+            .await
         }
         None => {
+            // Handle case where no subcommand is given, but flags might be present
             let config = load_config()?;
             let cli_id = config.cli_id.ok_or_else(|| {
                 anyhow!(
@@ -103,7 +124,15 @@ pub async fn execute(cli: Cli) -> Result<()> {
                         .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
                 )
             })?;
-            submit::run_submit_tui(cli.filepath, cli_id).await
+            // Pass flags directly
+            submit::run_submit_tui(
+                cli.filepath,
+                cli.gpu,
+                cli.leaderboard,
+                cli.mode,
+                cli_id,
+            )
+            .await
         }
     }
 }
