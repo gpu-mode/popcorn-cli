@@ -26,7 +26,7 @@ Since we're effectively giving out GPUs for free we rely on either github or dis
 3. We recommend you authenticate via your Discord as this will guarantee that your name will show up correctly on the leaderboard, you can do this via `popcorn-cli register discord`. However in case this doesn't work for you we also support Github based authentication with `popcorn-cli register github`
 4. To ensure the above worked you can run `cat $HOME/.popcorn.yaml` which should print your client ID which is what will be sent to us on every request
 
-Sometimes you'll get an error that you're already authenticated despite being unable to submit in which case you can run `popcorn-cli reregister [discord|github]`.
+Sometimes you'll get an error that you're already authenticated despite being unable to submit in which case you can run `popcorn-cli register [discord|github]`.
 
 Set the `POPCORN_API_URL` environment variable to the URL of the Popcorn API. You can get this from the [GPU Mode Discord server](https://discord.gg/gpumode) - go to the submissions chanel and `/get-api-url`
 
