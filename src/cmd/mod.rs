@@ -52,9 +52,6 @@ pub struct Cli {
     #[arg(long)]
     pub leaderboard: Option<String>,
 
-    /// Optional: Specify submission mode (test, benchmark, leaderboard, profile)
-    #[arg(long)]
-    pub mode: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -74,7 +71,20 @@ enum Commands {
         provider: AuthProvider,
     },
     Submit {
+        /// Optional: Path to the solution file (can also be provided as a top-level argument)
         filepath: Option<String>,
+
+        /// Optional: Directly specify the GPU to use (e.g., "MI300")
+        #[arg(long)]
+        gpu: Option<String>,
+
+        /// Optional: Directly specify the leaderboard (e.g., "amd-fp8-mm")
+        #[arg(long)]
+        leaderboard: Option<String>,
+
+        /// Optional: Specify submission mode (test, benchmark, leaderboard, profile)
+        #[arg(long)]
+        mode: Option<String>,
     },
 }
 
@@ -94,7 +104,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
             };
             auth::run_auth(false, provider_str).await
         }
-        Some(Commands::Submit { filepath }) => {
+        Some(Commands::Submit { filepath, gpu, leaderboard, mode }) => {
             let config = load_config()?;
             let cli_id = config.cli_id.ok_or_else(|| {
                 anyhow!(
@@ -103,36 +113,45 @@ pub async fn execute(cli: Cli) -> Result<()> {
                         .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
                 )
             })?;
-            // Extract values and pass them individually
+            // Use filepath from Submit command first, fallback to top-level filepath
             let final_filepath = filepath.or(cli.filepath);
             submit::run_submit_tui(
-                final_filepath,
-                cli.gpu,
-                cli.leaderboard,
-                cli.mode,
+                final_filepath, // Resolved filepath
+                gpu,            // From Submit command
+                leaderboard,    // From Submit command
+                mode,           // From Submit command
                 cli_id,
             )
             .await
         }
         None => {
-            // Handle case where no subcommand is given, but flags might be present
-            let config = load_config()?;
-            let cli_id = config.cli_id.ok_or_else(|| {
-                anyhow!(
-                    "cli_id not found in config file ({}). Please run `popcorn register` first.",
-                    get_config_path()
-                        .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
+            // Handle implicit submission (only top-level filepath provided, no subcommand)
+            // Flags (--gpu etc.) are now part of the Submit command, so they won't be parsed here
+            // unless clap is configured differently (e.g., global args). Assuming standard setup.
+            if let Some(top_level_filepath) = cli.filepath {
+                let config = load_config()?;
+                let cli_id = config.cli_id.ok_or_else(|| {
+                    anyhow!(
+                        "cli_id not found in config file ({}). Please run `popcorn register` first.",
+                        get_config_path()
+                            .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
+                    )
+                })?;
+                // Call submit_tui with None for flags, as they weren't part of this parse path
+                submit::run_submit_tui(
+                    Some(top_level_filepath),
+                    None, // No gpu flag parsed in this path
+                    None, // No leaderboard flag parsed in this path
+                    None, // No mode flag parsed in this path
+                    cli_id,
                 )
-            })?;
-            // Pass flags directly
-            submit::run_submit_tui(
-                cli.filepath,
-                cli.gpu,
-                cli.leaderboard,
-                cli.mode,
-                cli_id,
-            )
-            .await
+                .await
+            } else {
+                // No command and no top-level filepath - show help or default behavior?
+                // For now, let's assume this implies showing help (clap might do this automatically)
+                // Or perhaps default to TUI with no file? Let's error for now.
+                Err(anyhow!("No command or submission file specified. Use --help for usage."))
+            }
         }
     }
 }
