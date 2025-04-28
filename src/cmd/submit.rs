@@ -603,7 +603,7 @@ pub async fn run_submit_tui(
     mode: Option<String>,
     cli_id: String,
 ) -> Result<()> {
-    let file_to_submit = match filepath { // Use passed filepath argument
+    let file_to_submit = match filepath {
         Some(fp) => fp,
         None => {
             // Prompt user for filepath if not provided
@@ -626,16 +626,46 @@ pub async fn run_submit_tui(
         ));
     }
 
+    // Perform direct submission if all required parameters are provided via CLI
+    if let (Some(gpu_flag), Some(leaderboard_flag), Some(mode_flag)) = (&gpu, &leaderboard, &mode) {
+        // Read file content
+        let mut file = File::open(&file_to_submit)?;
+        let mut file_content = String::new();
+        file.read_to_string(&mut file_content)?;
+        
+        // Create client and submit directly
+        let client = service::create_client(Some(cli_id))?;
+        println!("Submitting solution directly with:");
+        println!("  File: {}", file_to_submit);
+        println!("  Leaderboard: {}", leaderboard_flag);
+        println!("  GPU: {}", gpu_flag);
+        println!("  Mode: {}", mode_flag);
+        
+        // Make the submission
+        let result = service::submit_solution(
+            &client, 
+            &file_to_submit, 
+            &file_content, 
+            leaderboard_flag, 
+            gpu_flag, 
+            mode_flag
+        ).await?;
+        
+        utils::display_ascii_art();
+        println!("{}", result);
+        return Ok(());
+    }
+
     let mut app = App::new(&file_to_submit, cli_id);
 
     // Override directives with CLI flags if provided
-    if let Some(gpu_flag) = gpu { // Use passed gpu argument
+    if let Some(gpu_flag) = gpu {
         app.selected_gpu = Some(gpu_flag);
     }
-    if let Some(leaderboard_flag) = leaderboard { // Use passed leaderboard argument
+    if let Some(leaderboard_flag) = leaderboard {
         app.selected_leaderboard = Some(leaderboard_flag);
     }
-    if let Some(mode_flag) = mode { // Use passed mode argument
+    if let Some(mode_flag) = mode {
         app.selected_submission_mode = Some(mode_flag);
         // Skip to submission if we have all required fields
         if app.selected_gpu.is_some() && app.selected_leaderboard.is_some() {

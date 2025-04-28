@@ -51,7 +51,10 @@ pub struct Cli {
     /// Optional: Directly specify the leaderboard (e.g., "fp8")
     #[arg(long)]
     pub leaderboard: Option<String>,
-
+    
+    /// Optional: Specify submission mode (test, benchmark, leaderboard, profile)
+    #[arg(long)]
+    pub mode: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -125,9 +128,15 @@ pub async fn execute(cli: Cli) -> Result<()> {
             .await
         }
         None => {
-            // Handle implicit submission (only top-level filepath provided, no subcommand)
-            // Flags (--gpu etc.) are now part of the Submit command, so they won't be parsed here
-            // unless clap is configured differently (e.g., global args). Assuming standard setup.
+            // Check if any of the submission-related flags were used at the top level
+            if cli.gpu.is_some() || cli.leaderboard.is_some() || cli.mode.is_some() {
+                return Err(anyhow!(
+                    "Please use the 'submit' subcommand when specifying submission options:\n\
+                    popcorn-cli submit [--gpu GPU] [--leaderboard LEADERBOARD] [--mode MODE] FILEPATH"
+                ));
+            }
+            
+            // Handle the case where only a filepath is provided (for backward compatibility)
             if let Some(top_level_filepath) = cli.filepath {
                 let config = load_config()?;
                 let cli_id = config.cli_id.ok_or_else(|| {
@@ -137,19 +146,17 @@ pub async fn execute(cli: Cli) -> Result<()> {
                             .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
                     )
                 })?;
-                // Call submit_tui with None for flags, as they weren't part of this parse path
+                
+                // Run TUI with only filepath, no other options
                 submit::run_submit_tui(
                     Some(top_level_filepath),
-                    None, // No gpu flag parsed in this path
-                    None, // No leaderboard flag parsed in this path
-                    None, // No mode flag parsed in this path
+                    None, // No GPU option
+                    None, // No leaderboard option
+                    None, // No mode option
                     cli_id,
                 )
                 .await
             } else {
-                // No command and no top-level filepath - show help or default behavior?
-                // For now, let's assume this implies showing help (clap might do this automatically)
-                // Or perhaps default to TUI with no file? Let's error for now.
                 Err(anyhow!("No command or submission file specified. Use --help for usage."))
             }
         }

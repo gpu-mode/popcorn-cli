@@ -32,7 +32,14 @@ Set the `POPCORN_API_URL` environment variable to the URL of the Popcorn API. Yo
 
 ## Make your first submission
 
-After this, you can submit a solution by running:
+```bash
+wget https://raw.githubusercontent.com/gpu-mode/reference-kernels/refs/heads/main/problems/pmpp/grayscale_py/submission.py
+popcorn-cli submit --gpu A100 --leaderboard grayscale --mode leaderboard submission.py
+```
+
+## Discover new problems
+
+The CLI supports (almost) everything Discord does, so you can also discovery which leaderboards are available. To make discovery more pleasant we also offer a CLI experience.
 
 ```bash
 popcorn-cli submit <submission-file>
