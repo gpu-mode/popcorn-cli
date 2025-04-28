@@ -43,6 +43,18 @@ pub struct Cli {
 
     /// Optional: Path to the solution file
     filepath: Option<String>,
+
+    /// Optional: Directly specify the GPU to use (e.g., "mi300")
+    #[arg(long)]
+    pub gpu: Option<String>,
+
+    /// Optional: Directly specify the leaderboard (e.g., "fp8")
+    #[arg(long)]
+    pub leaderboard: Option<String>,
+    
+    /// Optional: Specify submission mode (test, benchmark, leaderboard, profile)
+    #[arg(long)]
+    pub mode: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -62,7 +74,20 @@ enum Commands {
         provider: AuthProvider,
     },
     Submit {
+        /// Optional: Path to the solution file (can also be provided as a top-level argument)
         filepath: Option<String>,
+
+        /// Optional: Directly specify the GPU to use (e.g., "MI300")
+        #[arg(long)]
+        gpu: Option<String>,
+
+        /// Optional: Directly specify the leaderboard (e.g., "amd-fp8-mm")
+        #[arg(long)]
+        leaderboard: Option<String>,
+
+        /// Optional: Specify submission mode (test, benchmark, leaderboard, profile)
+        #[arg(long)]
+        mode: Option<String>,
     },
 }
 
@@ -82,7 +107,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
             };
             auth::run_auth(false, provider_str).await
         }
-        Some(Commands::Submit { filepath }) => {
+        Some(Commands::Submit { filepath, gpu, leaderboard, mode }) => {
             let config = load_config()?;
             let cli_id = config.cli_id.ok_or_else(|| {
                 anyhow!(
@@ -91,19 +116,49 @@ pub async fn execute(cli: Cli) -> Result<()> {
                         .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
                 )
             })?;
-            let file_to_submit = filepath.or(cli.filepath);
-            submit::run_submit_tui(file_to_submit, cli_id).await
+            // Use filepath from Submit command first, fallback to top-level filepath
+            let final_filepath = filepath.or(cli.filepath);
+            submit::run_submit_tui(
+                final_filepath, // Resolved filepath
+                gpu,            // From Submit command
+                leaderboard,    // From Submit command
+                mode,           // From Submit command
+                cli_id,
+            )
+            .await
         }
         None => {
-            let config = load_config()?;
-            let cli_id = config.cli_id.ok_or_else(|| {
-                anyhow!(
-                    "cli_id not found in config file ({}). Please run `popcorn register` first.",
-                    get_config_path()
-                        .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
+            // Check if any of the submission-related flags were used at the top level
+            if cli.gpu.is_some() || cli.leaderboard.is_some() || cli.mode.is_some() {
+                return Err(anyhow!(
+                    "Please use the 'submit' subcommand when specifying submission options:\n\
+                    popcorn-cli submit [--gpu GPU] [--leaderboard LEADERBOARD] [--mode MODE] FILEPATH"
+                ));
+            }
+            
+            // Handle the case where only a filepath is provided (for backward compatibility)
+            if let Some(top_level_filepath) = cli.filepath {
+                let config = load_config()?;
+                let cli_id = config.cli_id.ok_or_else(|| {
+                    anyhow!(
+                        "cli_id not found in config file ({}). Please run `popcorn register` first.",
+                        get_config_path()
+                            .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
+                    )
+                })?;
+                
+                // Run TUI with only filepath, no other options
+                submit::run_submit_tui(
+                    Some(top_level_filepath),
+                    None, // No GPU option
+                    None, // No leaderboard option
+                    None, // No mode option
+                    cli_id,
                 )
-            })?;
-            submit::run_submit_tui(cli.filepath, cli_id).await
+                .await
+            } else {
+                Err(anyhow!("No command or submission file specified. Use --help for usage."))
+            }
         }
     }
 }
