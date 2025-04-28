@@ -596,7 +596,13 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         .split(popup_layout[1])[1]
 }
 
-pub async fn run_submit_tui(filepath: Option<String>, cli_id: String) -> Result<()> {
+pub async fn run_submit_tui(
+    filepath: Option<String>,
+    gpu: Option<String>,
+    leaderboard: Option<String>,
+    mode: Option<String>,
+    cli_id: String,
+) -> Result<()> {
     let file_to_submit = match filepath {
         Some(fp) => fp,
         None => {
@@ -620,40 +626,91 @@ pub async fn run_submit_tui(filepath: Option<String>, cli_id: String) -> Result<
         ));
     }
 
-    let mut app = App::new(&file_to_submit, cli_id);
-    app.initialize_with_directives(directives);
+    // Perform direct submission if all required parameters are provided via CLI
+    if let (Some(gpu_flag), Some(leaderboard_flag), Some(mode_flag)) = (&gpu, &leaderboard, &mode) {
+        // Read file content
+        let mut file = File::open(&file_to_submit)?;
+        let mut file_content = String::new();
+        file.read_to_string(&mut file_content)?;
+        
+        // Create client and submit directly
+        let client = service::create_client(Some(cli_id))?;
+        println!("Submitting solution directly with:");
+        println!("  File: {}", file_to_submit);
+        println!("  Leaderboard: {}", leaderboard_flag);
+        println!("  GPU: {}", gpu_flag);
+        println!("  Mode: {}", mode_flag);
+        
+        // Make the submission
+        let result = service::submit_solution(
+            &client, 
+            &file_to_submit, 
+            &file_content, 
+            leaderboard_flag, 
+            gpu_flag, 
+            mode_flag
+        ).await?;
+        
+        utils::display_ascii_art();
+        println!("{}", result);
+        return Ok(());
+    }
 
+    let mut app = App::new(&file_to_submit, cli_id);
+
+    // Override directives with CLI flags if provided
+    if let Some(gpu_flag) = gpu {
+        app.selected_gpu = Some(gpu_flag);
+    }
+    if let Some(leaderboard_flag) = leaderboard {
+        app.selected_leaderboard = Some(leaderboard_flag);
+    }
+    if let Some(mode_flag) = mode {
+        app.selected_submission_mode = Some(mode_flag);
+        // Skip to submission if we have all required fields
+        if app.selected_gpu.is_some() && app.selected_leaderboard.is_some() {
+            app.modal_state = ModelState::WaitingForResult;
+        }
+    }
+
+    // If no CLI flags, use directives
+    if app.selected_gpu.is_none() && app.selected_leaderboard.is_none() {
+        app.initialize_with_directives(directives);
+    }
+
+    // Spawn the initial task based on the starting state BEFORE setting up the TUI
+    // If spawning fails here, we just return the error directly without TUI cleanup.
+    match app.modal_state {
+        ModelState::LeaderboardSelection => {
+            if let Err(e) = app.spawn_load_leaderboards() {
+                return Err(anyhow!("Error starting leaderboard fetch: {}", e));
+            }
+        }
+        ModelState::GpuSelection => {
+            if let Err(e) = app.spawn_load_gpus() {
+                return Err(anyhow!("Error starting GPU fetch: {}", e));
+            }
+        }
+        ModelState::WaitingForResult => {
+            // This state occurs when all flags (gpu, leaderboard, mode) are provided
+            if let Err(e) = app.spawn_submit_solution() {
+                return Err(anyhow!("Error starting submission: {}", e));
+            }
+        }
+        _ => {
+            // Other states like SubmissionModeSelection shouldn't be the *initial* state
+            // unless there's a logic error elsewhere. We'll proceed to TUI.
+        }
+    }
+
+    // Now, set up the TUI
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     crossterm::execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    if app.modal_state == ModelState::LeaderboardSelection {
-        if let Err(e) = app.spawn_load_leaderboards() {
-            // Cleanup terminal before exiting on initial load error
-            disable_raw_mode()?;
-            crossterm::execute!(
-                terminal.backend_mut(),
-                crossterm::terminal::LeaveAlternateScreen
-            )?;
-            terminal.show_cursor()?;
-            return Err(anyhow!("Error starting leaderboard fetch: {}", e));
-        }
-    } else if app.modal_state == ModelState::GpuSelection {
-        if let Err(e) = app.spawn_load_gpus() {
-            // Cleanup terminal before exiting on initial load error
-            disable_raw_mode()?;
-            crossterm::execute!(
-                terminal.backend_mut(),
-                crossterm::terminal::LeaveAlternateScreen
-            )?;
-            terminal.show_cursor()?;
-            return Err(anyhow!("Error starting GPU fetch: {}", e));
-        }
-    }
-
-    // Main application loop
+    // Main application loop - this remains largely the same
     while !app.should_quit {
         terminal.draw(|f| ui(&app, f))?;
 
