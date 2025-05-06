@@ -126,7 +126,7 @@ pub async fn submit_solution<P: AsRef<Path>>(
     let resp = client
         .post(&url)
         .multipart(form)
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_secs(3600))
         .send()
         .await?;
 
