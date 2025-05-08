@@ -28,8 +28,6 @@ Since we're effectively giving out GPUs for free we rely on either github or dis
 
 Sometimes you'll get an error that you're already authenticated despite being unable to submit in which case you can run `popcorn-cli reregister [discord|github]`.
 
-Set the `POPCORN_API_URL` environment variable to the URL of the Popcorn API. You can get this from the [GPU Mode Discord server](https://discord.gg/gpumode) - go to the submissions chanel and `/get-api-url`
-
 ## Make your first submission
 
 ```bash
@@ -39,16 +37,10 @@ popcorn-cli submit --gpu A100 --leaderboard grayscale --mode leaderboard submiss
 
 ## Discover new problems
 
-The CLI supports (almost) everything Discord does, so you can also discovery which leaderboards are available. To make discovery more pleasant we also offer a CLI experience.
+The CLI supports (almost) everything Discord does, so you can also discovery which leaderboards are available. To make discovery more pleasant we also offer a TUI experience.
 
 ```bash
 popcorn-cli submit <submission-file>
 ```
-
-The interactive CLI will guide you through the process of:
-1. Selecting a leaderboard
-2. Selecting GPU options
-3. Setting submission mode
-4. Submitting your work
 
 glhf!
