@@ -175,15 +175,8 @@ pub async fn submit_solution<P: AsRef<Path>>(
                         "status" => (),
                         "result" => {
                             let result_val: Value = serde_json::from_str(data)?;
-                            let pretty_result = match result_val.get("results") {
-                                Some(result_obj) => serde_json::to_string_pretty(result_obj)?,
-                                None => {
-                                    return Err(anyhow!(
-                                        "Invalid 'result' event structure: missing 'results' field"
-                                    ))
-                                }
-                            };
-                            return Ok(pretty_result);
+                            let reports = result_val.get("reports").unwrap();
+                            return Ok(reports.to_string());
                         }
                         "error" => {
                             let error_val: Value = serde_json::from_str(data)?;
