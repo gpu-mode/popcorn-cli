@@ -9,6 +9,7 @@ use ratatui::prelude::*;
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
+use termimad;
 use tokio::task::JoinHandle;
 
 use crate::models::{GpuItem, LeaderboardItem, ModelState, SubmissionModeItem};
@@ -632,7 +633,7 @@ pub async fn run_submit_tui(
         let mut file = File::open(&file_to_submit)?;
         let mut file_content = String::new();
         file.read_to_string(&mut file_content)?;
-        
+
         // Create client and submit directly
         let client = service::create_client(Some(cli_id))?;
         println!("Submitting solution directly with:");
@@ -640,19 +641,21 @@ pub async fn run_submit_tui(
         println!("  Leaderboard: {}", leaderboard_flag);
         println!("  GPU: {}", gpu_flag);
         println!("  Mode: {}", mode_flag);
-        
+
         // Make the submission
         let result = service::submit_solution(
-            &client, 
-            &file_to_submit, 
-            &file_content, 
-            leaderboard_flag, 
-            gpu_flag, 
-            mode_flag
-        ).await?;
-        
+            &client,
+            &file_to_submit,
+            &file_content,
+            leaderboard_flag,
+            gpu_flag,
+            mode_flag,
+        )
+        .await?;
+
+        println!("Submission result: {}", result);
+
         utils::display_ascii_art();
-        println!("{}", result);
         return Ok(());
     }
 
@@ -740,7 +743,21 @@ pub async fn run_submit_tui(
     utils::display_ascii_art();
 
     if let Some(status) = app.final_status {
-        println!("{}", status);
+        // The status string may contain literal "\n" characters instead of newlines.
+        // Replace all occurrences of "\\n" with '\n' before rendering as markdown.
+        let trimmed = status.trim();
+        let content = if trimmed.starts_with('[') && trimmed.ends_with(']') && trimmed.len() >= 2 {
+            &trimmed[1..trimmed.len() - 1]
+        } else {
+            trimmed
+        };
+
+        // Replace all literal "\n" with actual newlines
+        let content = content.replace("\\n", "\n");
+
+        termimad::print_text(&content);
+
+    // Print as markdown using termimad for nice formatting
     } else {
         println!("Operation cancelled."); // Or some other default message if quit early
     }
