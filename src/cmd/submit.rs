@@ -9,12 +9,12 @@ use ratatui::prelude::*;
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
-use termimad;
 use tokio::task::JoinHandle;
 
 use crate::models::{GpuItem, LeaderboardItem, ModelState, SubmissionModeItem};
 use crate::service;
 use crate::utils;
+use crate::views::result_page::ResultPage;
 
 pub struct App {
     pub filepath: String,
@@ -424,16 +424,6 @@ pub fn ui(app: &App, frame: &mut Frame) {
     // Calculate usable width for text wrapping (subtract borders, padding, highlight symbol)
     let available_width = list_area.width.saturating_sub(4) as usize;
 
-    if let Some(ref msg) = app.loading_message {
-        let loading_paragraph = Paragraph::new(msg.clone())
-            .block(Block::default().title("Loading").borders(Borders::ALL))
-            .alignment(Alignment::Center);
-
-        let area = centered_rect(60, 20, frame.size());
-        frame.render_widget(loading_paragraph, area);
-        return; // Don't render anything else while loading
-    }
-
     let list_block = Block::default().borders(Borders::ALL);
     let list_style = Style::default().fg(Color::White);
 
@@ -572,7 +562,12 @@ pub fn ui(app: &App, frame: &mut Frame) {
             );
         }
         ModelState::WaitingForResult => {
-            // This state is handled by the loading message check at the beginning
+            let loading_paragraph = Paragraph::new(app.loading_message.clone().unwrap())
+                .block(Block::default().title("Loading").borders(Borders::ALL))
+                .alignment(Alignment::Center);
+
+            let area = centered_rect(60, 20, frame.size());
+            frame.render_widget(loading_paragraph, area);
         }
     }
 }
@@ -732,19 +727,9 @@ pub async fn run_submit_tui(
         }
     }
 
-    // Restore terminal
-    disable_raw_mode()?;
-    crossterm::execute!(
-        terminal.backend_mut(),
-        crossterm::terminal::LeaveAlternateScreen
-    )?;
-    terminal.show_cursor()?;
-
-    utils::display_ascii_art();
+    let mut result_text = "Submission cancelled.".to_string();
 
     if let Some(status) = app.final_status {
-        // The status string may contain literal "\n" characters instead of newlines.
-        // Replace all occurrences of "\\n" with '\n' before rendering as markdown.
         let trimmed = status.trim();
         let content = if trimmed.starts_with('[') && trimmed.ends_with(']') && trimmed.len() >= 2 {
             &trimmed[1..trimmed.len() - 1]
@@ -755,12 +740,39 @@ pub async fn run_submit_tui(
         // Replace all literal "\n" with actual newlines
         let content = content.replace("\\n", "\n");
 
-        termimad::print_text(&content);
-
-    // Print as markdown using termimad for nice formatting
-    } else {
-        println!("Operation cancelled."); // Or some other default message if quit early
+        result_text = content.to_string();
     }
+
+    let mut ack = false;
+
+    let result_page = ResultPage::new(result_text.clone());
+    while !ack {
+        terminal
+            .draw(|frame: &mut Frame| {
+                result_page.render(frame);
+            })
+            .unwrap();
+
+        if event::poll(std::time::Duration::from_millis(50))? {
+            if let Event::Key(key) = event::read()? {
+                if key.kind == KeyEventKind::Press {
+                    if key.code == KeyCode::Char('q') {
+                        ack = true;
+                    }
+                }
+            }
+        }
+    }
+
+    // Restore terminal
+    disable_raw_mode()?;
+    crossterm::execute!(
+        terminal.backend_mut(),
+        crossterm::terminal::LeaveAlternateScreen
+    )?;
+    terminal.show_cursor()?;
+
+    // utils::display_ascii_art();
 
     Ok(())
 }
