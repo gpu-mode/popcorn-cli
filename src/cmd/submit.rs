@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
+use std::result;
 
 use anyhow::{anyhow, Result};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -8,12 +9,13 @@ use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScree
 use ratatui::prelude::*;
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
+use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
 use tokio::task::JoinHandle;
 
 use crate::models::{GpuItem, LeaderboardItem, ModelState, SubmissionModeItem};
 use crate::service;
 use crate::utils;
+use crate::views::loading_page::LoadingPage;
 use crate::views::result_page::ResultPage;
 
 pub struct App {
@@ -119,11 +121,6 @@ impl App {
         if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
             self.should_quit = true;
             return Ok(true);
-        }
-
-        // Ignore other keys while loading
-        if self.loading_message.is_some() {
-            return Ok(false);
         }
 
         match key.code {
@@ -562,34 +559,10 @@ pub fn ui(app: &App, frame: &mut Frame) {
             );
         }
         ModelState::WaitingForResult => {
-            let loading_paragraph = Paragraph::new(app.loading_message.clone().unwrap())
-                .block(Block::default().title("Loading").borders(Borders::ALL))
-                .alignment(Alignment::Center);
-
-            let area = centered_rect(60, 20, frame.size());
-            frame.render_widget(loading_paragraph, area);
+            let loading_page = LoadingPage::new();
+            frame.render_widget(loading_page, frame.size());
         }
     }
-}
-
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
 }
 
 pub async fn run_submit_tui(
@@ -695,10 +668,7 @@ pub async fn run_submit_tui(
                 return Err(anyhow!("Error starting submission: {}", e));
             }
         }
-        _ => {
-            // Other states like SubmissionModeSelection shouldn't be the *initial* state
-            // unless there's a logic error elsewhere. We'll proceed to TUI.
-        }
+        _ => {}
     }
 
     // Now, set up the TUI
@@ -743,22 +713,18 @@ pub async fn run_submit_tui(
         result_text = content.to_string();
     }
 
-    let mut ack = false;
-
-    let result_page = ResultPage::new(result_text.clone());
-    while !ack {
+    let mut result_page = ResultPage::new(result_text.clone());
+    while !result_page.ack {
         terminal
             .draw(|frame: &mut Frame| {
-                result_page.render(frame);
+                frame.render_widget(&result_page, frame.size());
             })
             .unwrap();
 
         if event::poll(std::time::Duration::from_millis(50))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    if key.code == KeyCode::Char('q') {
-                        ack = true;
-                    }
+                    result_page.handle_key_event(key);
                 }
             }
         }
