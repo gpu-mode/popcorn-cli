@@ -111,11 +111,12 @@ pub async fn execute(cli: Cli) -> Result<()> {
             let config = load_config()?;
             let cli_id = config.cli_id.ok_or_else(|| {
                 anyhow!(
-                    "cli_id not found in config file ({}). Please run `popcorn register` first.",
+                    "cli_id not found in config file ({}). Please run 'popcorn-cli register' first.",
                     get_config_path()
                         .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
                 )
             })?;
+            
             // Use filepath from Submit command first, fallback to top-level filepath
             let final_filepath = filepath.or(cli.filepath);
             submit::run_submit_tui(
