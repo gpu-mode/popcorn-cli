@@ -14,7 +14,7 @@ if (-not $isAdmin) {
 }
 
 # Set variables
-$downloadUrl = "https://github.com/gpu-mode/popcorn-cli/releases/download/v1.1.6/popcorn-cli-windows.zip"
+$downloadUrl = "https://github.com/gpu-mode/popcorn-cli/releases/latest/download/popcorn-cli-windows.zip"
 $tempDir = "$env:TEMP\popcorn-cli-install"
 $installDir = "$env:LOCALAPPDATA\popcorn-cli"
 $binaryPath = "$installDir\popcorn-cli.exe"

@@ -46,7 +46,7 @@ fi
 echo "✅ Detected OS: $OS"
 
 # Download URL
-DOWNLOAD_URL="https://github.com/gpu-mode/popcorn-cli/releases/download/v1.1.6/popcorn-cli-${OS}${EXTENSION}"
+DOWNLOAD_URL="https://github.com/gpu-mode/popcorn-cli/releases/latest/popcorn-cli-${OS}${EXTENSION}"
 TEMP_DIR="/tmp/popcorn-cli-install"
 INSTALL_DIR="$HOME/.local/bin"
 
