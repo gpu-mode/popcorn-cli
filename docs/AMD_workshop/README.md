@@ -25,7 +25,7 @@ powershell -ExecutionPolicy Bypass -Command "iwr -UseBasicParsing https://raw.gi
 
 3. **Submit your solution:**
    ```bash
-   popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test submission.py
+   popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test example.py
    ```
    
 4. **Interactive mode** (choose GPU and options):
@@ -49,41 +49,12 @@ If the scripts don't work, you can manually install:
 - Check if the install directory is in your PATH:
   - Linux/macOS: `echo $PATH`
   - Windows: `echo $env:PATH`
-
-### Windows execution policy error
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
-
-### Permission denied (Linux/macOS)
-Make the script executable:
-```bash
-chmod +x install.sh
-./install.sh
-```
-
-## 🖥️ Operating System Support
-
-| OS | Script | Requirements |
-|---|---|---|
-| **Linux** | `install.sh` | `curl` or `wget`, `tar` |
-| **macOS** | `install.sh` | `curl` or `wget`, `tar` |
-| **Windows** | `install.ps1` | PowerShell 5.1+ |
-| **Windows WSL** | `install.sh` | `curl` or `wget`, `tar` |
-| **Git Bash** | `install.sh` | `curl` or `wget`, `tar` |
-
-## 🎯 Hackathon Features
-
-This hackathon version includes:
-
-- ✅ **Pre-configured API URL** - No need to get `/get-api-url` from Discord
-- ✅ **GitHub authentication** - Simple OAuth flow, no Discord setup required
-- ✅ **All modes available** - test, benchmark, leaderboard, profile
-- ✅ **Auto-PATH setup** - Binary automatically added to your PATH
-- ✅ **Cross-platform** - Works on Linux, macOS, and Windows
+- Check if POPCORN_API_URL is set to https://discord-cluster-manager-1f6c4782e60a.herokuapp.com
+  - Linux/macOS: `echo $POPCORN_API_URL`
+  - Windows: `echo $env:POPCORN_API_URL`
 
 ## 💡 Need Help?
 
 - Run `popcorn-cli --help` for usage information
-- Check the [main repository](https://github.com/gpu-mode/popcorn-cli) for issues
-- Join the [GPU Mode Discord](https://discord.gg/gpumode) for support 
+- Check the [main repository](https://github.com/gpu-mode/popcorn-cli) and open an issue
+- Join the [GPU Mode Discord](https://discord.gg/gpumode) and ask a question in #amd-competition
