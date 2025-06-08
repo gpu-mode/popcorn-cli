@@ -37,7 +37,7 @@ powershell -ExecutionPolicy Bypass -Command "iwr -UseBasicParsing https://raw.gi
 
 If the scripts don't work, you can manually install:
 
-1. Download the binary for your OS from [releases](https://github.com/gpu-mode/popcorn-cli/releases/tag/v1.1.6)
+1. Download the binary for your OS from [releases](https://github.com/gpu-mode/popcorn-cli/releases/latest)
 2. Extract the archive
 3. Move the binary to a directory in your PATH
 4. Make it executable (Linux/macOS): `chmod +x popcorn-cli`
