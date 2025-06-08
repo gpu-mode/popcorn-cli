@@ -2,6 +2,7 @@ mod cmd;
 mod models;
 mod service;
 mod utils;
+mod views;
 
 use crate::cmd::Cli;
 use clap::Parser;
