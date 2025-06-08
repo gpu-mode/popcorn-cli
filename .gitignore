@@ -1,2 +1,4 @@
 submission.*
 target/
+rust/Cargo.lock
+scratch.md
