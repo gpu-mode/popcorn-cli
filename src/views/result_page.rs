@@ -1,5 +1,5 @@
 use crate::utils;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Constraint, Layout, Margin, Rect},
     prelude::Buffer,
