@@ -14,32 +14,6 @@ curl -fsSL https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/install.s
 powershell -ExecutionPolicy Bypass -Command "iwr -UseBasicParsing https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/install.ps1 | iex"
 ```
 
-### For Windows (Alternative - Download and Run):
-```powershell
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/install.ps1" -OutFile "install.ps1"
-powershell -ExecutionPolicy Bypass -File install.ps1
-```
-
-## 🖥️ Operating System Support
-
-| OS | Script | Requirements |
-|---|---|---|
-| **Linux** | `install.sh` | `curl` or `wget`, `tar` |
-| **macOS** | `install.sh` | `curl` or `wget`, `tar` |
-| **Windows** | `install.ps1` | PowerShell 5.1+ |
-| **Windows WSL** | `install.sh` | `curl` or `wget`, `tar` |
-| **Git Bash** | `install.sh` | `curl` or `wget`, `tar` |
-
-## 🎯 Hackathon Features
-
-This hackathon version includes:
-
-- ✅ **Pre-configured API URL** - No need to get `/get-api-url` from Discord
-- ✅ **GitHub authentication** - Simple OAuth flow, no Discord setup required
-- ✅ **All modes available** - test, benchmark, leaderboard, profile
-- ✅ **Auto-PATH setup** - Binary automatically added to your PATH
-- ✅ **Cross-platform** - Works on Linux, macOS, and Windows
-
 ## 📋 Quick Start After Installation
 
 1. **Restart your terminal** (or run `source ~/.bashrc` / `source ~/.zshrc`)
@@ -51,9 +25,9 @@ This hackathon version includes:
 
 3. **Submit your solution:**
    ```bash
-   popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test my_solution.py
+   popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test submission.py
    ```
-
+   
 4. **Interactive mode** (choose GPU and options):
    ```bash
    popcorn-cli submit my_solution.py
@@ -87,6 +61,26 @@ Make the script executable:
 chmod +x install.sh
 ./install.sh
 ```
+
+## 🖥️ Operating System Support
+
+| OS | Script | Requirements |
+|---|---|---|
+| **Linux** | `install.sh` | `curl` or `wget`, `tar` |
+| **macOS** | `install.sh` | `curl` or `wget`, `tar` |
+| **Windows** | `install.ps1` | PowerShell 5.1+ |
+| **Windows WSL** | `install.sh` | `curl` or `wget`, `tar` |
+| **Git Bash** | `install.sh` | `curl` or `wget`, `tar` |
+
+## 🎯 Hackathon Features
+
+This hackathon version includes:
+
+- ✅ **Pre-configured API URL** - No need to get `/get-api-url` from Discord
+- ✅ **GitHub authentication** - Simple OAuth flow, no Discord setup required
+- ✅ **All modes available** - test, benchmark, leaderboard, profile
+- ✅ **Auto-PATH setup** - Binary automatically added to your PATH
+- ✅ **Cross-platform** - Works on Linux, macOS, and Windows
 
 ## 💡 Need Help?
 
