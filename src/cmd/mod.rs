@@ -111,7 +111,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
             let config = load_config()?;
             let cli_id = config.cli_id.ok_or_else(|| {
                 anyhow!(
-                    "cli_id not found in config file ({}). Please run 'popcorn-cli register github' first.",
+                    "cli_id not found in config file ({}). Please run 'popcorn-cli register' first.",
                     get_config_path()
                         .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
                 )
@@ -130,21 +130,19 @@ pub async fn execute(cli: Cli) -> Result<()> {
         }
         None => {
             // Check if any of the submission-related flags were used at the top level
-            if cli.gpu.is_some() || cli.leaderboard.is_some() || cli.mode.is_some() || cli.anonymous {
+            if cli.gpu.is_some() || cli.leaderboard.is_some() || cli.mode.is_some() {
                 return Err(anyhow!(
                     "Please use the 'submit' subcommand when specifying submission options:\n\
-                    popcorn-cli submit [--gpu GPU] [--leaderboard LEADERBOARD] [--mode MODE] [--anonymous] FILEPATH"
+                    popcorn-cli submit [--gpu GPU] [--leaderboard LEADERBOARD] [--mode MODE] FILEPATH"
                 ));
             }
             
             // Handle the case where only a filepath is provided (for backward compatibility)
             if let Some(top_level_filepath) = cli.filepath {
-                // Regular authenticated submission for backward compatibility
                 let config = load_config()?;
                 let cli_id = config.cli_id.ok_or_else(|| {
                     anyhow!(
-                        "cli_id not found in config file ({}). Please run 'popcorn-cli register discord' or 'popcorn-cli register github' first. \
-                        For test/benchmark modes only, you can also use: popcorn-cli submit --anonymous --mode test <your-file>",
+                        "cli_id not found in config file ({}). Please run `popcorn register` first.",
                         get_config_path()
                             .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
                     )
