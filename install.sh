@@ -22,7 +22,6 @@ fi
 
 # Detect OS
 OS=""
-ARCH=""
 BINARY_NAME=""
 EXTENSION=""
 
