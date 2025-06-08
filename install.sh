@@ -121,16 +121,37 @@ fi
 # Cleanup
 rm -rf "$TEMP_DIR"
 
+# Auto-register with Discord for hackathon
+echo "🔐 Setting up authentication..."
+if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+    # Temporarily add to PATH for immediate use
+    export PATH="$INSTALL_DIR:$PATH"
+fi
+
+# Check if already registered
+if [[ -f "$HOME/.popcorn.yaml" ]]; then
+    echo "✅ Already registered! Skipping authentication setup."
+else
+    echo "🚀 Registering with Discord for hackathon access..."
+    if "$INSTALL_DIR/$BINARY_NAME" register discord; then
+        echo "✅ Registration successful!"
+    else
+        echo "⚠️  Registration failed. You can register manually later with:"
+        echo "   popcorn-cli register discord"
+    fi
+fi
+
 echo ""
-echo "🎉 Popcorn CLI installed successfully!"
+echo "🎉 Popcorn CLI installed and configured for hackathon!"
 echo ""
 echo "📋 Quick Start:"
 echo "   1. Restart your terminal or run: source $SHELL_RC"
-echo "   2. Register with Discord: popcorn-cli register discord"
-echo "   3. Submit your first solution: popcorn-cli submit <your-file>"
+echo "   2. Submit your first solution: popcorn-cli submit <your-file>"
 echo ""
-echo "🚀 The CLI is configured for hackathon mode:"
-echo "   - API URL is pre-configured"
-echo "   - Only 'test' and 'benchmark' modes available"
+echo "🚀 Hackathon mode features:"
+echo "   - ✅ API URL pre-configured"
+echo "   - ✅ Discord authentication set up"
+echo "   - ✅ Only 'test' and 'benchmark' modes available"
+echo "   - ✅ Ready to use immediately!"
 echo ""
 echo "💡 Need help? Run: popcorn-cli --help" 
