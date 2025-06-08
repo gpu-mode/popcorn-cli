@@ -15,7 +15,7 @@ use crate::models::{AppState, GpuItem, LeaderboardItem, SubmissionModeItem};
 use crate::service;
 use crate::utils;
 use crate::views::loading_page::{LoadingPage, LoadingPageState};
-use crate::views::result_page::ResultPage;
+use crate::views::result_page::{ResultPage, ResultPageState};
 
 #[derive(Default, Debug)]
 pub struct App {
@@ -43,6 +43,8 @@ pub struct App {
     pub gpus_task: Option<JoinHandle<Result<Vec<GpuItem>, anyhow::Error>>>,
 
     pub loading_page_state: LoadingPageState,
+
+    pub result_page_state: ResultPageState,
 }
 
 impl App {
@@ -655,27 +657,21 @@ pub async fn run_submit_tui(
             trimmed
         };
 
-        // Replace all literal "\n" with actual newlines
         let content = content.replace("\\n", "\n");
 
         result_text = content.to_string();
     }
 
-    let mut result_page = ResultPage::new(result_text.clone());
-    while !result_page.ack {
+    let state = &mut app.result_page_state;
+
+    let mut result_page = ResultPage::new(result_text.clone(), state);
+    while !state.ack {
         terminal
             .draw(|frame: &mut Frame| {
-                frame.render_widget(&result_page, frame.size());
+                frame.render_stateful_widget(&result_page, frame.size(), state);
             })
             .unwrap();
-
-        if event::poll(std::time::Duration::from_millis(50))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    result_page.handle_key_event(key);
-                }
-            }
-        }
+        result_page.handle_key_event(state);
     }
 
     // Restore terminal
