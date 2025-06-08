@@ -114,6 +114,6 @@ Write-Host "   - All modes available: test, benchmark, leaderboard, profile" -Fo
 Write-Host "   - Clean user identification" -ForegroundColor White
 Write-Host ""
 Write-Host "Need help? Run: popcorn-cli --help" -ForegroundColor White
-Write-Host "Example: popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test submission.py" -ForegroundColor White
+Write-Host "Example: popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test example.py" -ForegroundColor White
 Write-Host ""
 Write-Host "Installation location: $installDir" -ForegroundColor Gray 
