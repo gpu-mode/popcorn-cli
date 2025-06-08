@@ -30,7 +30,7 @@ powershell -ExecutionPolicy Bypass -Command "iwr -UseBasicParsing https://raw.gi
    
 4. **Interactive mode** (choose GPU and options):
    ```bash
-   popcorn-cli submit my_solution.py
+   popcorn-cli submit example.py
    ```
 
 ## 🛠️ Manual Installation
