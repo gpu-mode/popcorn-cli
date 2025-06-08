@@ -43,8 +43,9 @@ impl SubmissionModeItem {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum ModelState {
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum AppState {
+    #[default]
     LeaderboardSelection,
     GpuSelection,
     SubmissionModeSelection,
