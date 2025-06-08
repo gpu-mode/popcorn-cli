@@ -48,33 +48,68 @@ pub fn get_popcorn_directives<P: AsRef<Path>>(filepath: P) -> Result<(PopcornDir
     ))
 }
 
-pub fn display_ascii_art() {
+pub fn get_ascii_art() -> String {
     let art = r#"
- _   __                      _  ______          _   
-| | / /                     | | | ___ \        | |  
-| |/ /  ___ _ __ _ __   ___ | | | |_/ /  ___  _| |_ 
-|    \ / _ \ '__| '_ \ / _ \| | | ___ \ / _ \| | __|
-| |\  \  __/ |  | | | |  __/| | | |_/ /| (_) | | |_ 
-\_| \_/\___|_|  |_| |_|\___|_/ \____/ \___/|_|\__|
-                                                  
-    POPCORN CLI - GPU MODE
-    
- ┌───────────────────────────────────────┐
- │  ┌─────┐ ┌─────┐ ┌─────┐              │
- │  │ooOoo│ │ooOoo│ │ooOoo│              │▒
- │  │oOOOo│ │oOOOo│ │oOOOo│              │▒
- │  │ooOoo│ │ooOoo│ │ooOoo│   ┌────────┐ │▒
- │  └─────┘ └─────┘ └─────┘   │████████│ │▒
- │                            │████████│ │▒
- │ ┌────────────────────────┐ │████████│ │▒
- │ │                        │ │████████│ │▒
- │ │  POPCORN GPU COMPUTE   │ └────────┘ │▒
- │ │                        │            │▒
- │ └────────────────────────┘            │▒
- │                                       │▒
- └───────────────────────────────────────┘▒
-  ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
-    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-"#;
+    _   __                      _  ______          _   
+   | | / /                     | | | ___ \        | |  
+   | |/ /  ___ _ __ _ __   ___ | | | |_/ /  ___  _| |_ 
+   |    \ / _ \ '__| '_ \ / _ \| | | ___ \ / _ \| | __|
+   | |\  \  __/ |  | | | |  __/| | | |_/ /| (_) | | |_ 
+   \_| \_/\___|_|  |_| |_|\___|_/ \____/ \___/|_|\__|
+                                                     
+       POPCORN CLI - GPU MODE
+       
+    ┌───────────────────────────────────────┐
+    │  ┌─────┐ ┌─────┐ ┌─────┐              │
+    │  │ooOoo│ │ooOoo│ │ooOoo│              │▒
+    │  │oOOOo│ │oOOOo│ │oOOOo│              │▒
+    │  │ooOoo│ │ooOoo│ │ooOoo│   ┌────────┐ │▒
+    │  └─────┘ └─────┘ └─────┘   │████████│ │▒
+    │                            │████████│ │▒
+    │ ┌────────────────────────┐ │████████│ │▒
+    │ │                        │ │████████│ │▒
+    │ │  POPCORN GPU COMPUTE   │ └────────┘ │▒
+    │ │                        │            │▒
+    │ └────────────────────────┘            │▒
+    │                                       │▒
+    └───────────────────────────────────────┘▒
+     ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+       ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   "#;
+
+    art.to_string()
+}
+
+
+pub fn display_ascii_art() {
+    let art = get_ascii_art();
     println!("{}", art);
+}
+
+pub fn custom_wrap(initial_text: String, remaining_text: String, available_width: usize) -> Vec<String> {
+    let mut lines = vec![initial_text];
+    let mut current_line = String::with_capacity(available_width);
+    for word in remaining_text.split_whitespace() {
+        if word.len() > available_width {
+            if !current_line.is_empty() {
+                lines.push(current_line.clone());
+                current_line.clear();
+            }
+            lines.push(word.to_string());
+        } else if current_line.is_empty() {
+            current_line.push_str(word);
+        } else if current_line.len() + word.len() + 1 <= available_width {
+            current_line.push(' ');
+            current_line.push_str(word);
+        } else {
+            lines.push(current_line.clone());
+            current_line.clear();
+            current_line.push_str(word);
+        }
+    }
+
+    if !current_line.is_empty() {
+        lines.push(current_line);
+    }
+    lines
 }
