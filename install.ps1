@@ -99,47 +99,21 @@ try {
     Write-Host "⚠️  Could not test binary: $_" -ForegroundColor Yellow
 }
 
-# Auto-register with Discord for hackathon
-Write-Host "🔐 Setting up authentication..." -ForegroundColor Cyan
-$configPath = "$env:USERPROFILE\.popcorn.yaml"
-
-# Check if already registered
-if (Test-Path $configPath) {
-    Write-Host "✅ Already registered! Skipping authentication setup." -ForegroundColor Green
-} else {
-    Write-Host "🚀 Registering with Discord for hackathon access..." -ForegroundColor Yellow
-    try {
-        # Add to current session PATH if not already there
-        if ($env:PATH -notlike "*$installDir*") {
-            $env:PATH = "$installDir;$env:PATH"
-        }
-        
-        $result = & $binaryPath register discord
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "✅ Registration successful!" -ForegroundColor Green
-        } else {
-            Write-Host "⚠️  Registration failed. You can register manually later with:" -ForegroundColor Yellow
-            Write-Host "   popcorn-cli register discord" -ForegroundColor White
-        }
-    } catch {
-        Write-Host "⚠️  Registration failed: $_" -ForegroundColor Yellow
-        Write-Host "   You can register manually later with: popcorn-cli register discord" -ForegroundColor White
-    }
-}
-
 Write-Host ""
-Write-Host "🎉 Popcorn CLI installed and configured for hackathon!" -ForegroundColor Green
+Write-Host "🎉 Popcorn CLI installed and ready for hackathon!" -ForegroundColor Green
 Write-Host ""
 Write-Host "📋 Quick Start:" -ForegroundColor Cyan
 Write-Host "   1. Restart your terminal/PowerShell" -ForegroundColor White
-Write-Host "   2. Submit your first solution: popcorn-cli submit <your-file>" -ForegroundColor White
+Write-Host "   2. Register with GitHub: popcorn-cli register github" -ForegroundColor White
+Write-Host "   3. Submit your solution: popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test <your-file>" -ForegroundColor White
 Write-Host ""
 Write-Host "🚀 Hackathon mode features:" -ForegroundColor Cyan
 Write-Host "   - ✅ API URL pre-configured" -ForegroundColor White
-Write-Host "   - ✅ Discord authentication set up" -ForegroundColor White
-Write-Host "   - ✅ Only 'test' and 'benchmark' modes available" -ForegroundColor White
-Write-Host "   - ✅ Ready to use immediately!" -ForegroundColor White
+Write-Host "   - ✅ GitHub authentication (no Discord setup needed)" -ForegroundColor White
+Write-Host "   - ✅ All modes available: test, benchmark, leaderboard, profile" -ForegroundColor White
+Write-Host "   - ✅ Clean user identification" -ForegroundColor White
 Write-Host ""
 Write-Host "💡 Need help? Run: popcorn-cli --help" -ForegroundColor White
+Write-Host "🔗 Example: popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test submission.py" -ForegroundColor White
 Write-Host ""
 Write-Host "📁 Installation location: $installDir" -ForegroundColor Gray 

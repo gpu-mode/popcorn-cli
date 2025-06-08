@@ -49,17 +49,16 @@ impl App {
                 "Benchmark the solution, this also runs the tests and afterwards runs the benchmark, returning detailed timing results".to_string(),
                 "benchmark".to_string(),
             ),
-            // Hackathon mode: Only test and benchmark allowed
-            // SubmissionModeItem::new(
-            //     "Leaderboard".to_string(),
-            //     "Submit to the leaderboard, this first runs public tests and then private tests. If both pass, the submission is evaluated and submit to the leaderboard.".to_string(),
-            //     "leaderboard".to_string(),
-            // ),
-            // SubmissionModeItem::new(
-            //     "Profile".to_string(),
-            //     "Work in progress...".to_string(),
-            //     "profile".to_string(),
-            // ),
+            SubmissionModeItem::new(
+                "Leaderboard".to_string(),
+                "Submit to the leaderboard, this first runs public tests and then private tests. If both pass, the submission is evaluated and submit to the leaderboard.".to_string(),
+                "leaderboard".to_string(),
+            ),
+            SubmissionModeItem::new(
+                "Profile".to_string(),
+                "Work in progress...".to_string(),
+                "profile".to_string(),
+            ),
         ];
 
         let mut app = Self {

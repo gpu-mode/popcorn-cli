@@ -35,8 +35,8 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 This hackathon version includes:
 
 - ✅ **Pre-configured API URL** - No need to get `/get-api-url` from Discord
-- ✅ **Auto-registration** - Automatically registers with Discord during install
-- ✅ **Restricted modes** - Only `test` and `benchmark` available (no leaderboard submissions)
+- ✅ **GitHub authentication** - Simple OAuth flow, no Discord setup required
+- ✅ **All modes available** - test, benchmark, leaderboard, profile
 - ✅ **Auto-PATH setup** - Binary automatically added to your PATH
 - ✅ **Cross-platform** - Works on Linux, macOS, and Windows
 
@@ -44,9 +44,14 @@ This hackathon version includes:
 
 1. **Restart your terminal** (or run `source ~/.bashrc` / `source ~/.zshrc`)
 
-2. **Submit your first solution:** (registration is automatic!)
+2. **Register with GitHub** (one-time setup):
    ```bash
-   popcorn-cli submit --gpu A100 --mode test my_solution.py
+   popcorn-cli register github
+   ```
+
+3. **Submit your solution:**
+   ```bash
+   popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test my_solution.py
    ```
 
 4. **Interactive mode** (choose GPU and options):
