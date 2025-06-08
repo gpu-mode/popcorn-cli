@@ -14,10 +14,9 @@ async fn main() {
     let cli = Cli::parse();
 
     // Popcorn API URL check (needed for most commands)
-    // We might want to move this check inside specific commands later if some don't need it.
+    // For hackathon: hardcode the API URL if not set
     if env::var("POPCORN_API_URL").is_err() {
-        eprintln!("POPCORN_API_URL is not set. Please set it to the URL of the Popcorn API.");
-        process::exit(1);
+        env::set_var("POPCORN_API_URL", "https://discord-cluster-manager-1f6c4782e60a.herokuapp.com");
     }
 
     // Execute the parsed command
