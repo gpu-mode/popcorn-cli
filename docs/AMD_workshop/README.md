@@ -23,16 +23,6 @@ powershell -ExecutionPolicy Bypass -Command "iwr -UseBasicParsing https://raw.gi
    popcorn-cli register github
    ```
 
-3. **Submit your solution:**
-   ```bash
-   popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test v1.py
-   ```
-   
-4. **Interactive mode** (choose GPU and options):
-   ```bash
-   popcorn-cli submit v1.py
-   ```
-
 ## 🏃 Run Examples
 
 Try out the example implementations to get familiar with the system:
@@ -99,3 +89,11 @@ If the scripts don't work, you can manually install:
 - Run `popcorn-cli --help` for usage information
 - Check the [main repository](https://github.com/gpu-mode/popcorn-cli) and open an issue
 - Join the [GPU Mode Discord](https://discord.gg/gpumode) and ask a question in #amd-competition
+
+## 🧑‍🎓 Learn more from our favorite writeups
+
+* https://github.com/luongthecong123/fp8-quant-matmul
+* https://seb-v.github.io/optimization/update/2025/01/20/Fast-GPU-Matrix-multiplication.html
+* https://akashkarnatak.github.io/amd-challenge/
+* https://www.bilibili.com/read/cv41954307/?opus_fallback=1 
+* https://github.com/Snektron/gpumode-amd-fp8-mm
