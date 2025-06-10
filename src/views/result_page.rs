@@ -15,6 +15,7 @@ pub struct ResultPageState {
     pub horizontal_scroll: u16,
     pub horizontal_scroll_state: ScrollbarState,
     pub ack: bool,
+    pub animation_frame: u16,
 }
 
 #[derive(Default, Debug)]
@@ -37,18 +38,21 @@ impl ResultPage {
             .content_length(num_lines);
 
         state.horizontal_scroll_state = state.horizontal_scroll_state.content_length(max_width);
+        state.animation_frame = 0;
 
         Self {
             result_text: Paragraph::new(result_text),
         }
     }
 
-    fn render_left(&self, buf: &mut Buffer, left: Rect) {
+    fn render_left(&self, buf: &mut Buffer, left: Rect, state: &mut ResultPageState) {
         let left_block = Block::bordered()
             .border_type(BorderType::Plain)
-            .border_style(Style::default().fg(Color::Yellow));
+            .border_style(Style::default().fg(Color::Rgb(255, 165, 0)))
+            .title("GPU MODE")
+            .title_alignment(Alignment::Center);
 
-        let left_text = Paragraph::new(utils::get_ascii_art());
+        let left_text = Paragraph::new(utils::get_ascii_art_frame(state.animation_frame / 5));
 
         left_text.block(left_block).render(left, buf);
     }
@@ -56,10 +60,11 @@ impl ResultPage {
     fn render_right(&self, buf: &mut Buffer, right: Rect, state: &mut ResultPageState) {
         let right_block = Block::bordered()
             .border_type(BorderType::Plain)
-            .border_style(Style::default().fg(Color::Yellow))
+            .border_style(Style::default().fg(Color::Rgb(255, 165, 0)))
+            .title_alignment(Alignment::Center)
+            .title("Submission Results")
             .title_bottom("Press q to quit...")
-            .title_style(Style::default().fg(Color::Red))
-            .title_alignment(Alignment::Right);
+            .title_style(Style::default().fg(Color::Magenta));
 
         let result_text = self
             .result_text
@@ -70,8 +75,9 @@ impl ResultPage {
     }
 
     pub fn handle_key_event(&mut self, state: &mut ResultPageState) {
-        if event::poll(std::time::Duration::from_millis(50)).unwrap() {
-            if let Event::Key(key) = event::read().unwrap() {
+        // Use a non-blocking poll
+        if let Ok(true) = event::poll(std::time::Duration::from_millis(0)) {
+            if let Ok(Event::Key(key)) = event::read() {
                 if key.kind != KeyEventKind::Press {
                     return;
                 }
@@ -115,10 +121,13 @@ impl StatefulWidget for &ResultPage {
     type State = ResultPageState;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut ResultPageState) {
+        // Increment animation frame on every render
+        state.animation_frame = state.animation_frame.wrapping_add(1);
+
         let layout = Layout::horizontal([Constraint::Percentage(45), Constraint::Percentage(55)]);
         let [left, right] = layout.areas(area);
 
-        self.render_left(buf, left);
+        self.render_left(buf, left, state);
         self.render_right(buf, right, state);
 
         let vertical_scrollbar =

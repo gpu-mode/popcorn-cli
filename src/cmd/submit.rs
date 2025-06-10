@@ -665,12 +665,18 @@ pub async fn run_submit_tui(
     let state = &mut app.result_page_state;
 
     let mut result_page = ResultPage::new(result_text.clone(), state);
+    let mut last_draw = std::time::Instant::now();
     while !state.ack {
-        terminal
-            .draw(|frame: &mut Frame| {
-                frame.render_stateful_widget(&result_page, frame.size(), state);
-            })
-            .unwrap();
+        // Force redraw every 100ms for smooth animation
+        let now = std::time::Instant::now();
+        if now.duration_since(last_draw) >= std::time::Duration::from_millis(100) {
+            terminal
+                .draw(|frame: &mut Frame| {
+                    frame.render_stateful_widget(&result_page, frame.size(), state);
+                })
+                .unwrap();
+            last_draw = now;
+        }
         result_page.handle_key_event(state);
     }
 
