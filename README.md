@@ -1,6 +1,7 @@
 # Popcorn CLI
 
 A command-line interface tool for submitting solutions to the [Popcorn Discord Bot](https://github.com/gpu-mode/discord-cluster-manager)
+<img width="1034" alt="Screenshot 2025-06-10 at 11 17 45 AM" src="https://github.com/user-attachments/assets/66414f12-a984-4a3d-b035-d31f8695a54d" />
 
 Tested on linux and mac but should just work on Windows as well.
 
