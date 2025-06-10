@@ -1,3 +1,6 @@
+#!POPCORN leaderboard amd-fp8-mm
+#!POPCORN gpu MI300
+
 import torch
 from task import input_t, output_t
 
