@@ -25,13 +25,54 @@ powershell -ExecutionPolicy Bypass -Command "iwr -UseBasicParsing https://raw.gi
 
 3. **Submit your solution:**
    ```bash
-   popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test example.py
+   popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test v1.py
    ```
    
 4. **Interactive mode** (choose GPU and options):
    ```bash
-   popcorn-cli submit example.py
+   popcorn-cli submit v1.py
    ```
+
+## 🏃 Run Examples
+
+Try out the example implementations to get familiar with the system:
+
+### For Linux/macOS:
+```bash
+# Download and test v1.py (reference implementation)
+wget https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/docs/AMD_workshop/v1.py
+popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test v1.py
+
+# Download and test v2.py (basic optimization)
+wget https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/docs/AMD_workshop/v2.py
+popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test v2.py
+
+# Download and test v3.py (advanced optimization)
+wget https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/docs/AMD_workshop/v3.py
+popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test v3.py
+```
+
+### For Windows (PowerShell):
+```powershell
+# Download and test v1.py (reference implementation)
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/docs/AMD_workshop/v1.py" -OutFile "v1.py"
+popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test v1.py
+
+# Download and test v2.py (basic optimization)
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/docs/AMD_workshop/v2.py" -OutFile "v2.py"
+popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test v2.py
+
+# Download and test v3.py (advanced optimization)
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/docs/AMD_workshop/v3.py" -OutFile "v3.py"
+popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test v3.py
+```
+
+### 💡 Pro Tips:
+- Start with **v1.py** (reference implementation) to understand the baseline
+- Try **v2.py** for basic optimizations
+- Challenge yourself with **v3.py** for advanced Triton optimizations
+- Use `--mode benchmark` instead of `--mode test` to see performance metrics
+
 
 ## 🛠️ Manual Installation
 
