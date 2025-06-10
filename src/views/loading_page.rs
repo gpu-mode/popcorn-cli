@@ -19,7 +19,17 @@ pub struct LoadingPage {
     footer_area: Rect,
 }
 
-const GAUGE_COLOR: Color = ratatui::style::palette::tailwind::RED.c800;
+fn get_gradient_color(progress: f64) -> Color {
+    // Convert progress from 0-100 to 0-1
+    let t = progress / 100.0;
+    
+    // Start with red (255, 0, 0) and end with green (0, 255, 0)
+    let r = ((1.0 - t) * 255.0) as u8;
+    let g = (t * 255.0) as u8;
+    let b = 0;
+    
+    Color::Rgb(r, g, b)
+}
 
 impl StatefulWidget for &LoadingPage {
     type State = LoadingPageState;
@@ -40,7 +50,7 @@ fn render_gauge(area: Rect, buf: &mut Buffer, state: &mut LoadingPageState) {
     let blk = Block::default().padding(Padding::horizontal(20));
     Gauge::default()
         .block(blk)
-        .gauge_style(GAUGE_COLOR)
+        .gauge_style(get_gradient_color(state.progress_bar))
         .ratio(state.progress_bar / 100.0)
         .render(area, buf);
 }
