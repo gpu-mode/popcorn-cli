@@ -23,15 +23,46 @@ powershell -ExecutionPolicy Bypass -Command "iwr -UseBasicParsing https://raw.gi
    popcorn-cli register github
    ```
 
-3. **Submit your solution:**
-   ```bash
-   popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test example.py
-   ```
-   
-4. **Interactive mode** (choose GPU and options):
-   ```bash
-   popcorn-cli submit example.py
-   ```
+## 🏃 Run Examples
+
+Try out the example implementations to get familiar with the system:
+
+### For Linux/macOS:
+```bash
+# Download and test v1.py (reference implementation)
+wget https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/docs/AMD_workshop/v1.py
+popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test v1.py
+
+# Download and test v2.py (basic optimization)
+wget https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/docs/AMD_workshop/v2.py
+popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test v2.py
+
+# Download and test v3.py (advanced optimization)
+wget https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/docs/AMD_workshop/v3.py
+popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test v3.py
+```
+
+### For Windows (PowerShell):
+```powershell
+# Download and test v1.py (reference implementation)
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/docs/AMD_workshop/v1.py" -OutFile "v1.py"
+popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test v1.py
+
+# Download and test v2.py (basic optimization)
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/docs/AMD_workshop/v2.py" -OutFile "v2.py"
+popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test v2.py
+
+# Download and test v3.py (advanced optimization)
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/docs/AMD_workshop/v3.py" -OutFile "v3.py"
+popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test v3.py
+```
+
+### 💡 Pro Tips:
+- Start with **v1.py** (reference implementation) to understand the baseline
+- Try **v2.py** for basic optimizations
+- Challenge yourself with **v3.py** for advanced Triton optimizations
+- Use `--mode benchmark` instead of `--mode test` to see performance metrics
+
 
 ## 🛠️ Manual Installation
 
@@ -58,3 +89,11 @@ If the scripts don't work, you can manually install:
 - Run `popcorn-cli --help` for usage information
 - Check the [main repository](https://github.com/gpu-mode/popcorn-cli) and open an issue
 - Join the [GPU Mode Discord](https://discord.gg/gpumode) and ask a question in #amd-competition
+
+## 🧑‍🎓 Learn more from our favorite writeups
+
+* https://github.com/luongthecong123/fp8-quant-matmul
+* https://seb-v.github.io/optimization/update/2025/01/20/Fast-GPU-Matrix-multiplication.html
+* https://akashkarnatak.github.io/amd-challenge/
+* https://www.bilibili.com/read/cv41954307/?opus_fallback=1 
+* https://github.com/Snektron/gpumode-amd-fp8-mm
