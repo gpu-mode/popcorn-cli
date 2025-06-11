@@ -547,38 +547,6 @@ pub async fn run_submit_tui(
         ));
     }
 
-    // Perform direct submission if all required parameters are provided via CLI
-    if let (Some(gpu_flag), Some(leaderboard_flag), Some(mode_flag)) = (&gpu, &leaderboard, &mode) {
-        // Read file content
-        let mut file = File::open(&file_to_submit)?;
-        let mut file_content = String::new();
-        file.read_to_string(&mut file_content)?;
-
-        // Create client and submit directly
-        let client = service::create_client(Some(cli_id))?;
-        println!("Submitting solution directly with:");
-        println!("  File: {}", file_to_submit);
-        println!("  Leaderboard: {}", leaderboard_flag);
-        println!("  GPU: {}", gpu_flag);
-        println!("  Mode: {}", mode_flag);
-
-        // Make the submission
-        let result = service::submit_solution(
-            &client,
-            &file_to_submit,
-            &file_content,
-            leaderboard_flag,
-            gpu_flag,
-            mode_flag,
-        )
-        .await?;
-
-        println!("Submission result: {}", result);
-
-        utils::display_ascii_art();
-        return Ok(());
-    }
-
     let mut app = App::new(&file_to_submit, cli_id);
 
     // Override directives with CLI flags if provided
