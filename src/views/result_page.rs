@@ -1,5 +1,5 @@
 use crate::utils;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{
     layout::{Alignment, Constraint, Layout, Margin, Rect},
     prelude::Buffer,
@@ -82,6 +82,9 @@ impl ResultPage {
                     return;
                 }
                 if key.code == KeyCode::Char('q') {
+                    state.ack = true;
+                }
+                if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
                     state.ack = true;
                 }
 
