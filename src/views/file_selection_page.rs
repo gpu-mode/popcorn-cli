@@ -1,3 +1,4 @@
+use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout},
@@ -6,23 +7,20 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame,
 };
-use std::path::PathBuf;
 use std::fs;
-use anyhow::Result;
+use std::path::PathBuf;
 
 #[derive(Debug, PartialEq)]
 pub enum FileSelectionAction {
     Handled,
     NotHandled,
     FileSelected(String),
-    ToggleHidden,
 }
 
 pub struct FileSelectionView {
     current_dir: PathBuf,
     entries: Vec<PathBuf>,
     state: ListState,
-    show_hidden: bool,
 }
 
 impl FileSelectionView {
@@ -32,24 +30,15 @@ impl FileSelectionView {
             current_dir,
             entries: Vec::new(),
             state: ListState::default(),
-            show_hidden: false,
         };
         view.load_directory()?;
         view.state.select(Some(0));
         Ok(view)
     }
 
-    pub fn current_dir(&self) -> &PathBuf {
-        &self.current_dir
-    }
-
-    pub fn show_hidden(&self) -> bool {
-        self.show_hidden
-    }
-
     pub fn load_directory(&mut self) -> Result<()> {
         self.entries.clear();
-        
+
         // Add parent directory option
         if let Some(parent) = self.current_dir.parent() {
             self.entries.push(parent.to_path_buf());
@@ -60,14 +49,10 @@ impl FileSelectionView {
             .filter_map(|entry| entry.ok())
             .map(|entry| entry.path())
             .filter(|path| {
-                if self.show_hidden {
-                    true
-                } else {
-                    path.file_name()
-                        .and_then(|name| name.to_str())
-                        .map(|name| !name.starts_with('.'))
-                        .unwrap_or(true)
-                }
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .map(|name| !name.starts_with('.'))
+                    .unwrap_or(true)
             })
             .collect();
 
@@ -114,7 +99,9 @@ impl FileSelectionView {
                             self.state.select(Some(0));
                             Ok(FileSelectionAction::Handled)
                         } else if path.is_file() {
-                            Ok(FileSelectionAction::FileSelected(path.to_string_lossy().to_string()))
+                            Ok(FileSelectionAction::FileSelected(
+                                path.to_string_lossy().to_string(),
+                            ))
                         } else {
                             Ok(FileSelectionAction::Handled)
                         }
@@ -125,13 +112,7 @@ impl FileSelectionView {
                     Ok(FileSelectionAction::Handled)
                 }
             }
-            KeyCode::Char('h') => {
-                self.show_hidden = !self.show_hidden;
-                self.load_directory()?;
-                self.state.select(Some(0));
-                Ok(FileSelectionAction::ToggleHidden)
-            }
-            _ => Ok(FileSelectionAction::NotHandled)
+            _ => Ok(FileSelectionAction::NotHandled),
         }
     }
 
@@ -151,23 +132,31 @@ impl FileSelectionView {
 
         // Header
         let header = Paragraph::new(self.current_dir.display().to_string())
-            .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+            .style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
             .alignment(Alignment::Center)
-            .block(Block::default().borders(Borders::ALL).title("Select Solution File"));
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Select Solution File"),
+            );
         frame.render_widget(header, chunks[0]);
 
         // File list
-        let items: Vec<ListItem> = self.entries
+        let items: Vec<ListItem> = self
+            .entries
             .iter()
             .enumerate()
             .map(|(i, path)| {
-                let is_parent = i == 0 && path.parent().is_some() && path.parent() != Some(&self.current_dir);
+                let is_parent =
+                    i == 0 && path.parent().is_some() && path.parent() != Some(&self.current_dir);
                 let display_name = if is_parent {
                     "../".to_string()
                 } else {
-                    let name = path.file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("?");
+                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
                     if path.is_dir() {
                         format!("{}/", name)
                     } else {
@@ -176,7 +165,9 @@ impl FileSelectionView {
                 };
 
                 let style = if path.is_dir() {
-                    Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Blue)
+                        .add_modifier(Modifier::BOLD)
                 } else if path.extension().and_then(|e| e.to_str()) == Some("py") {
                     Style::default().fg(Color::Green)
                 } else {
@@ -192,18 +183,14 @@ impl FileSelectionView {
             .highlight_style(
                 Style::default()
                     .bg(Color::DarkGray)
-                    .add_modifier(Modifier::BOLD)
+                    .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("> ");
 
         frame.render_stateful_widget(files, chunks[1], &mut self.state);
 
         // Footer
-        let footer_text = if self.show_hidden {
-            "↑/↓: Navigate | Enter: Select | h: Hide hidden files | q/Esc: Cancel"
-        } else {
-            "↑/↓: Navigate | Enter: Select | h: Show hidden files | q/Esc: Cancel"
-        };
+        let footer_text = "↑/↓: Navigate | Enter: Select | q/Esc: Cancel";
         let footer = Paragraph::new(footer_text)
             .style(Style::default().fg(Color::DarkGray))
             .alignment(Alignment::Center);
