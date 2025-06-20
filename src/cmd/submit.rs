@@ -233,25 +233,40 @@ impl App {
     }
 
     pub fn initialize_with_directives(&mut self, popcorn_directives: utils::PopcornDirectives) {
-        if !popcorn_directives.leaderboard_name.is_empty() {
-            self.selected_leaderboard = Some(popcorn_directives.leaderboard_name);
+        let has_leaderboard = !popcorn_directives.leaderboard_name.is_empty();
+        let has_gpu = !popcorn_directives.gpus.is_empty();
 
-            if !popcorn_directives.gpus.is_empty() {
-                self.selected_gpu = Some(popcorn_directives.gpus[0].clone());
+        // Set the selected values from directives
+        if has_leaderboard {
+            self.selected_leaderboard = Some(popcorn_directives.leaderboard_name.clone());
+        }
+        if has_gpu {
+            self.selected_gpu = Some(popcorn_directives.gpus[0].clone());
+        }
+
+        // Determine initial state based on what's available
+        match (has_leaderboard, has_gpu) {
+            (true, true) => {
+                // Both leaderboard and GPU specified - go directly to submission mode selection
                 self.app_state = AppState::SubmissionModeSelection;
-            } else {
+                self.submission_mode_view = Some(SubmissionModeSelectionView::new(
+                    self.submission_modes.clone(),
+                    popcorn_directives.leaderboard_name,
+                    popcorn_directives.gpus[0].clone(),
+                ));
+            }
+            (true, false) => {
+                // Only leaderboard specified - need to select GPU
                 self.app_state = AppState::GpuSelection;
             }
-        } else if !popcorn_directives.gpus.is_empty() {
-            self.selected_gpu = Some(popcorn_directives.gpus[0].clone());
-            if !popcorn_directives.leaderboard_name.is_empty() {
-                self.selected_leaderboard = Some(popcorn_directives.leaderboard_name);
-                self.app_state = AppState::SubmissionModeSelection;
-            } else {
+            (false, true) => {
+                // Only GPU specified - need to select leaderboard
                 self.app_state = AppState::LeaderboardSelection;
             }
-        } else {
-            self.app_state = AppState::LeaderboardSelection;
+            (false, false) => {
+                // Neither specified - start from leaderboard selection
+                self.app_state = AppState::LeaderboardSelection;
+            }
         }
     }
 
@@ -290,10 +305,41 @@ impl App {
                 if let Some(view) = &mut self.file_selection_view {
                     match view.handle_key_event(key)? {
                         FileSelectionAction::FileSelected(filepath) => {
-                            self.filepath = filepath;
-                            self.app_state = AppState::LeaderboardSelection;
-                            if let Err(e) = self.spawn_load_leaderboards() {
-                                self.show_error(format!("Error starting leaderboard fetch: {}", e));
+                            self.filepath = filepath.clone();
+                            
+                            // Parse directives from the selected file
+                            match utils::get_popcorn_directives(&filepath) {
+                                Ok((directives, has_multiple_gpus)) => {
+                                    if has_multiple_gpus {
+                                        self.show_error("Multiple GPUs are not supported yet. Please specify only one GPU.".to_string());
+                                        return Ok(true);
+                                    }
+                                    
+                                    // Apply directives to determine next state
+                                    self.initialize_with_directives(directives);
+                                    
+                                    // Spawn appropriate task based on the new state
+                                    match self.app_state {
+                                        AppState::LeaderboardSelection => {
+                                            if let Err(e) = self.spawn_load_leaderboards() {
+                                                self.show_error(format!("Error starting leaderboard fetch: {}", e));
+                                            }
+                                        }
+                                        AppState::GpuSelection => {
+                                            if let Err(e) = self.spawn_load_gpus() {
+                                                self.show_error(format!("Error starting GPU fetch: {}", e));
+                                            }
+                                        }
+                                        AppState::SubmissionModeSelection => {
+                                            // View already created in initialize_with_directives
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                Err(e) => {
+                                    self.show_error(format!("Error parsing file directives: {}", e));
+                                    return Ok(true);
+                                }
                             }
                             return Ok(true);
                         }
@@ -642,7 +688,10 @@ pub async fn run_submit_tui(
             ));
         }
 
-        // Override directives with CLI flags if provided
+        // First apply directives as defaults
+        app.initialize_with_directives(directives);
+        
+        // Then override with CLI flags if provided
         if let Some(gpu_flag) = gpu {
             app.selected_gpu = Some(gpu_flag);
         }
@@ -655,11 +704,6 @@ pub async fn run_submit_tui(
             if app.selected_gpu.is_some() && app.selected_leaderboard.is_some() {
                 app.app_state = AppState::WaitingForResult;
             }
-        }
-
-        // If no CLI flags, use directives
-        if app.selected_gpu.is_none() && app.selected_leaderboard.is_none() {
-            app.initialize_with_directives(directives);
         }
 
         // Spawn the initial task based on the starting state BEFORE setting up the TUI
