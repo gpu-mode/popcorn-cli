@@ -527,11 +527,13 @@ pub async fn run_submit_tui(
     let file_to_submit = match filepath {
         Some(fp) => fp,
         None => {
-            // Prompt user for filepath if not provided
-            println!("Please enter the path to your solution file:");
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
-            input.trim().to_string()
+            // Use file selection TUI when no filepath is provided
+            use crate::views::file_selection_page::FileSelectionScreen;
+            let mut file_selector = FileSelectionScreen::new()?;
+            match file_selector.run().await? {
+                Some(selected_file) => selected_file,
+                None => return Ok(()), // User cancelled
+            }
         }
     };
 
