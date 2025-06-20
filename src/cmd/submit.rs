@@ -9,124 +9,16 @@ use ratatui::prelude::*;
 use ratatui::widgets::ListState;
 use tokio::task::JoinHandle;
 
-use crate::models::{AppState, GpuItem, LeaderboardItem, SubmissionModeItem};
-use crate::views::selection::SelectionItem;
+use crate::models::{
+    AppState, GpuItem, GpuSelectionView, LeaderboardItem, LeaderboardSelectionView,
+    SelectionAction, SelectionItem, SelectionView, SubmissionModeItem, SubmissionModeSelectionView,
+};
 use crate::service;
 use crate::utils;
+use crate::views::file_selection_page::{FileSelectionAction, FileSelectionView};
 use crate::views::loading_page::{LoadingPage, LoadingPageState};
-use crate::views::result_page::{ResultPageState, ResultView, ResultAction};
-use crate::views::welcome_page::{WelcomeView, WelcomeAction};
-use crate::views::file_selection_page::{FileSelectionView, FileSelectionAction};
-use crate::views::selection::{SelectionView, SelectionAction};
-
-// Selection view implementations for different types
-pub struct LeaderboardSelectionView {
-    leaderboards: Vec<LeaderboardItem>,
-    leaderboards_state: ListState,
-}
-
-impl LeaderboardSelectionView {
-    pub fn new(leaderboards: Vec<LeaderboardItem>) -> Self {
-        let mut state = ListState::default();
-        state.select(Some(0));
-        Self {
-            leaderboards,
-            leaderboards_state: state,
-        }
-    }
-}
-
-impl SelectionView<LeaderboardItem> for LeaderboardSelectionView {
-    fn title(&self) -> String {
-        "Select Leaderboard".to_string()
-    }
-    
-    fn items(&self) -> &[LeaderboardItem] {
-        &self.leaderboards
-    }
-    
-    fn state(&self) -> &ListState {
-        &self.leaderboards_state
-    }
-    
-    fn state_mut(&mut self) -> &mut ListState {
-        &mut self.leaderboards_state
-    }
-}
-
-pub struct GpuSelectionView {
-    gpus: Vec<GpuItem>,
-    gpus_state: ListState,
-    leaderboard_name: String,
-}
-
-impl GpuSelectionView {
-    pub fn new(gpus: Vec<GpuItem>, leaderboard_name: String) -> Self {
-        let mut state = ListState::default();
-        state.select(Some(0));
-        Self {
-            gpus,
-            gpus_state: state,
-            leaderboard_name,
-        }
-    }
-}
-
-impl SelectionView<GpuItem> for GpuSelectionView {
-    fn title(&self) -> String {
-        format!("Select GPU for '{}'", self.leaderboard_name)
-    }
-    
-    fn items(&self) -> &[GpuItem] {
-        &self.gpus
-    }
-    
-    fn state(&self) -> &ListState {
-        &self.gpus_state
-    }
-    
-    fn state_mut(&mut self) -> &mut ListState {
-        &mut self.gpus_state
-    }
-}
-
-pub struct SubmissionModeSelectionView {
-    submission_modes: Vec<SubmissionModeItem>,
-    submission_modes_state: ListState,
-    leaderboard_name: String,
-    gpu_name: String,
-}
-
-impl SubmissionModeSelectionView {
-    pub fn new(submission_modes: Vec<SubmissionModeItem>, leaderboard_name: String, gpu_name: String) -> Self {
-        let mut state = ListState::default();
-        state.select(Some(0));
-        Self {
-            submission_modes,
-            submission_modes_state: state,
-            leaderboard_name,
-            gpu_name,
-        }
-    }
-}
-
-impl SelectionView<SubmissionModeItem> for SubmissionModeSelectionView {
-    fn title(&self) -> String {
-        format!("Select Submission Mode for '{}' on '{}'", self.leaderboard_name, self.gpu_name)
-    }
-    
-    fn items(&self) -> &[SubmissionModeItem] {
-        &self.submission_modes
-    }
-    
-    fn state(&self) -> &ListState {
-        &self.submission_modes_state
-    }
-    
-    fn state_mut(&mut self) -> &mut ListState {
-        &mut self.submission_modes_state
-    }
-}
+use crate::views::result_page::{ResultAction, ResultPageState, ResultView};
+use crate::views::welcome_page::{WelcomeAction, WelcomeView};
 
 #[derive(Default)]
 pub struct App {
@@ -293,7 +185,9 @@ impl App {
                             return Ok(true);
                         }
                         WelcomeAction::ViewHistory => {
-                            self.show_error("View History feature is not yet implemented".to_string());
+                            self.show_error(
+                                "View History feature is not yet implemented".to_string(),
+                            );
                             return Ok(true);
                         }
                         WelcomeAction::Handled => return Ok(true),
@@ -306,7 +200,7 @@ impl App {
                     match view.handle_key_event(key)? {
                         FileSelectionAction::FileSelected(filepath) => {
                             self.filepath = filepath.clone();
-                            
+
                             // Parse directives from the selected file
                             match utils::get_popcorn_directives(&filepath) {
                                 Ok((directives, has_multiple_gpus)) => {
@@ -314,20 +208,27 @@ impl App {
                                         self.show_error("Multiple GPUs are not supported yet. Please specify only one GPU.".to_string());
                                         return Ok(true);
                                     }
-                                    
+
                                     // Apply directives to determine next state
                                     self.initialize_with_directives(directives);
-                                    
+
                                     // Spawn appropriate task based on the new state
+                                    // TODO: make spawn_x tasks also show error if they fail, a lot of duplicate code
                                     match self.app_state {
                                         AppState::LeaderboardSelection => {
                                             if let Err(e) = self.spawn_load_leaderboards() {
-                                                self.show_error(format!("Error starting leaderboard fetch: {}", e));
+                                                self.show_error(format!(
+                                                    "Error starting leaderboard fetch: {}",
+                                                    e
+                                                ));
                                             }
                                         }
                                         AppState::GpuSelection => {
                                             if let Err(e) = self.spawn_load_gpus() {
-                                                self.show_error(format!("Error starting GPU fetch: {}", e));
+                                                self.show_error(format!(
+                                                    "Error starting GPU fetch: {}",
+                                                    e
+                                                ));
                                             }
                                         }
                                         AppState::SubmissionModeSelection => {
@@ -337,7 +238,10 @@ impl App {
                                     }
                                 }
                                 Err(e) => {
-                                    self.show_error(format!("Error parsing file directives: {}", e));
+                                    self.show_error(format!(
+                                        "Error parsing file directives: {}",
+                                        e
+                                    ));
                                     return Ok(true);
                                 }
                             }
@@ -345,7 +249,6 @@ impl App {
                         }
                         FileSelectionAction::Handled => return Ok(true),
                         FileSelectionAction::NotHandled => return Ok(false),
-                        _ => return Ok(true),
                     }
                 }
             }
@@ -354,7 +257,7 @@ impl App {
                     match view.handle_key_event(key) {
                         SelectionAction::Selected(idx) => {
                             self.selected_leaderboard = Some(view.items()[idx].title().to_string());
-                            
+
                             if self.selected_gpu.is_none() {
                                 self.app_state = AppState::GpuSelection;
                                 if let Err(e) = self.spawn_load_gpus() {
@@ -492,7 +395,7 @@ impl App {
                     Ok(Ok(leaderboards)) => {
                         self.leaderboards = leaderboards.clone();
                         self.leaderboard_view = Some(LeaderboardSelectionView::new(leaderboards));
-                        
+
                         if let Some(selected_name) = &self.selected_leaderboard {
                             if let Some(index) = self
                                 .leaderboards
@@ -504,11 +407,12 @@ impl App {
                                 }
                                 if self.selected_gpu.is_some() {
                                     self.app_state = AppState::SubmissionModeSelection;
-                                    self.submission_mode_view = Some(SubmissionModeSelectionView::new(
-                                        self.submission_modes.clone(),
-                                        self.selected_leaderboard.as_ref().unwrap().clone(),
-                                        self.selected_gpu.as_ref().unwrap().clone(),
-                                    ));
+                                    self.submission_mode_view =
+                                        Some(SubmissionModeSelectionView::new(
+                                            self.submission_modes.clone(),
+                                            self.selected_leaderboard.as_ref().unwrap().clone(),
+                                            self.selected_gpu.as_ref().unwrap().clone(),
+                                        ));
                                 } else {
                                     self.app_state = AppState::GpuSelection;
                                     if let Err(e) = self.spawn_load_gpus() {
@@ -527,9 +431,7 @@ impl App {
                             view.state_mut().select(Some(0));
                         }
                     }
-                    Ok(Err(e)) => {
-                        self.show_error(format!("Error fetching leaderboards: {}", e))
-                    }
+                    Ok(Err(e)) => self.show_error(format!("Error fetching leaderboards: {}", e)),
                     Err(e) => self.show_error(format!("Task join error: {}", e)),
                 }
             }
@@ -545,9 +447,12 @@ impl App {
                         self.gpus = gpus.clone();
                         self.gpu_view = Some(GpuSelectionView::new(
                             gpus,
-                            self.selected_leaderboard.as_ref().unwrap_or(&"N/A".to_string()).clone(),
+                            self.selected_leaderboard
+                                .as_ref()
+                                .unwrap_or(&"N/A".to_string())
+                                .clone(),
                         ));
-                        
+
                         if let Some(selected_name) = &self.selected_gpu {
                             if let Some(index) = self
                                 .gpus
@@ -589,24 +494,28 @@ impl App {
                     Ok(Ok(status)) => {
                         // Process the status text
                         let trimmed = status.trim();
-                        let content = if trimmed.starts_with('[') && trimmed.ends_with(']') && trimmed.len() >= 2 {
+                        let content = if trimmed.starts_with('[')
+                            && trimmed.ends_with(']')
+                            && trimmed.len() >= 2
+                        {
                             &trimmed[1..trimmed.len() - 1]
                         } else {
                             trimmed
                         };
                         let content = content.replace("\\n", "\n");
-                        
+
                         // Create result view and transition to showing result
                         self.result_view = Some(ResultView::new(content));
                         self.app_state = AppState::ShowingResult;
                     }
                     Ok(Err(e)) => {
                         // Show error in result view
-                        self.result_view = Some(ResultView::new(format!("Submission error: {}", e)));
+                        self.result_view =
+                            Some(ResultView::new(format!("Submission error: {}", e)));
                         self.app_state = AppState::ShowingResult;
                     }
                     Err(e) => {
-                        // Show task join error in result view  
+                        // Show task join error in result view
                         self.result_view = Some(ResultView::new(format!("Task join error: {}", e)));
                         self.app_state = AppState::ShowingResult;
                     }
@@ -690,7 +599,7 @@ pub async fn run_submit_tui(
 
         // First apply directives as defaults
         app.initialize_with_directives(directives);
-        
+
         // Then override with CLI flags if provided
         if let Some(gpu_flag) = gpu {
             app.selected_gpu = Some(gpu_flag);

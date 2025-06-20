@@ -38,10 +38,6 @@ impl WelcomeView {
         Self { selected_index: 0 }
     }
 
-    pub fn selected_index(&self) -> usize {
-        self.selected_index
-    }
-
     pub fn handle_key_event(&mut self, key: KeyEvent) -> WelcomeAction {
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
