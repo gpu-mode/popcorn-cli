@@ -14,7 +14,7 @@ use crate::views::selection::SelectionItem;
 use crate::service;
 use crate::utils;
 use crate::views::loading_page::{LoadingPage, LoadingPageState};
-use crate::views::result_page::{ResultPage, ResultPageState};
+use crate::views::result_page::{ResultPageState, ResultView, ResultAction};
 use crate::views::welcome_page::{WelcomeView, WelcomeAction};
 use crate::views::file_selection_page::{FileSelectionView, FileSelectionAction};
 use crate::views::selection::{SelectionView, SelectionAction};
@@ -146,8 +146,6 @@ pub struct App {
     pub selected_submission_mode: Option<String>,
 
     pub app_state: AppState,
-    pub final_status: Option<String>,
-
     pub should_quit: bool,
     pub submission_task: Option<JoinHandle<Result<String, anyhow::Error>>>,
     pub leaderboards_task: Option<JoinHandle<Result<Vec<LeaderboardItem>, anyhow::Error>>>,
@@ -162,6 +160,7 @@ pub struct App {
     pub leaderboard_view: Option<LeaderboardSelectionView>,
     pub gpu_view: Option<GpuSelectionView>,
     pub submission_mode_view: Option<SubmissionModeSelectionView>,
+    pub result_view: Option<ResultView>,
 }
 
 impl App {
@@ -199,6 +198,7 @@ impl App {
             leaderboard_view: None,
             gpu_view: None,
             submission_mode_view: None,
+            result_view: None,
             ..Default::default()
         };
 
@@ -278,7 +278,7 @@ impl App {
                             return Ok(true);
                         }
                         WelcomeAction::ViewHistory => {
-                            self.set_error_and_quit("View History feature is not yet implemented".to_string());
+                            self.show_error("View History feature is not yet implemented".to_string());
                             return Ok(true);
                         }
                         WelcomeAction::Handled => return Ok(true),
@@ -293,7 +293,7 @@ impl App {
                             self.filepath = filepath;
                             self.app_state = AppState::LeaderboardSelection;
                             if let Err(e) = self.spawn_load_leaderboards() {
-                                self.set_error_and_quit(format!("Error starting leaderboard fetch: {}", e));
+                                self.show_error(format!("Error starting leaderboard fetch: {}", e));
                             }
                             return Ok(true);
                         }
@@ -312,7 +312,7 @@ impl App {
                             if self.selected_gpu.is_none() {
                                 self.app_state = AppState::GpuSelection;
                                 if let Err(e) = self.spawn_load_gpus() {
-                                    self.set_error_and_quit(format!("Error starting GPU fetch: {}", e));
+                                    self.show_error(format!("Error starting GPU fetch: {}", e));
                                 }
                             } else {
                                 self.app_state = AppState::SubmissionModeSelection;
@@ -354,12 +354,28 @@ impl App {
                             self.selected_submission_mode = Some(view.items()[idx].value.clone());
                             self.app_state = AppState::WaitingForResult;
                             if let Err(e) = self.spawn_submit_solution() {
-                                self.set_error_and_quit(format!("Error starting submission: {}", e));
+                                self.show_error(format!("Error starting submission: {}", e));
                             }
                             return Ok(true);
                         }
                         SelectionAction::Handled => return Ok(true),
                         SelectionAction::NotHandled => return Ok(false),
+                    }
+                }
+            }
+            AppState::ShowingResult => {
+                if let Some(view) = &mut self.result_view {
+                    match view.handle_key_event(key) {
+                        ResultAction::Quit => {
+                            self.should_quit = true;
+                            return Ok(true);
+                        }
+                        ResultAction::Handled => {
+                            // Update scroll state based on key
+                            view.update_scroll(key, &mut self.result_page_state);
+                            return Ok(true);
+                        }
+                        ResultAction::NotHandled => return Ok(false),
                     }
                 }
             }
@@ -369,9 +385,9 @@ impl App {
         Ok(false)
     }
 
-    fn set_error_and_quit(&mut self, error_message: String) {
-        self.final_status = Some(error_message);
-        self.should_quit = true;
+    fn show_error(&mut self, error_message: String) {
+        self.result_view = Some(ResultView::new(error_message));
+        self.app_state = AppState::ShowingResult;
     }
 
     pub fn spawn_load_leaderboards(&mut self) -> Result<()> {
@@ -450,7 +466,7 @@ impl App {
                                 } else {
                                     self.app_state = AppState::GpuSelection;
                                     if let Err(e) = self.spawn_load_gpus() {
-                                        self.set_error_and_quit(format!("Error starting GPU fetch: {}", e));
+                                        self.show_error(format!("Error starting GPU fetch: {}", e));
                                         return;
                                     }
                                 }
@@ -466,9 +482,9 @@ impl App {
                         }
                     }
                     Ok(Err(e)) => {
-                        self.set_error_and_quit(format!("Error fetching leaderboards: {}", e))
+                        self.show_error(format!("Error fetching leaderboards: {}", e))
                     }
-                    Err(e) => self.set_error_and_quit(format!("Task join error: {}", e)),
+                    Err(e) => self.show_error(format!("Task join error: {}", e)),
                 }
             }
         }
@@ -512,8 +528,8 @@ impl App {
                             view.state_mut().select(Some(0));
                         }
                     }
-                    Ok(Err(e)) => self.set_error_and_quit(format!("Error fetching GPUs: {}", e)),
-                    Err(e) => self.set_error_and_quit(format!("Task join error: {}", e)),
+                    Ok(Err(e)) => self.show_error(format!("Error fetching GPUs: {}", e)),
+                    Err(e) => self.show_error(format!("Task join error: {}", e)),
                 }
             }
         }
@@ -525,11 +541,29 @@ impl App {
                 let task = self.submission_task.take().unwrap();
                 match task.await {
                     Ok(Ok(status)) => {
-                        self.final_status = Some(status);
-                        self.should_quit = true; // Quit after showing final status
+                        // Process the status text
+                        let trimmed = status.trim();
+                        let content = if trimmed.starts_with('[') && trimmed.ends_with(']') && trimmed.len() >= 2 {
+                            &trimmed[1..trimmed.len() - 1]
+                        } else {
+                            trimmed
+                        };
+                        let content = content.replace("\\n", "\n");
+                        
+                        // Create result view and transition to showing result
+                        self.result_view = Some(ResultView::new(content));
+                        self.app_state = AppState::ShowingResult;
                     }
-                    Ok(Err(e)) => self.set_error_and_quit(format!("Submission error: {}", e)),
-                    Err(e) => self.set_error_and_quit(format!("Task join error: {}", e)),
+                    Ok(Err(e)) => {
+                        // Show error in result view
+                        self.result_view = Some(ResultView::new(format!("Submission error: {}", e)));
+                        self.app_state = AppState::ShowingResult;
+                    }
+                    Err(e) => {
+                        // Show task join error in result view  
+                        self.result_view = Some(ResultView::new(format!("Task join error: {}", e)));
+                        self.app_state = AppState::ShowingResult;
+                    }
                 }
             }
         }
@@ -570,6 +604,11 @@ pub fn ui(app: &mut App, frame: &mut Frame) {
                 frame.size(),
                 &mut app.loading_page_state.clone(),
             )
+        }
+        AppState::ShowingResult => {
+            if let Some(view) = &mut app.result_view {
+                view.render(frame, &mut app.result_page_state);
+            }
         }
     }
 }
@@ -667,39 +706,6 @@ pub async fn run_submit_tui(
                 }
             }
         }
-    }
-
-    let mut result_text = "Submission cancelled.".to_string();
-
-    if let Some(status) = app.final_status {
-        let trimmed = status.trim();
-        let content = if trimmed.starts_with('[') && trimmed.ends_with(']') && trimmed.len() >= 2 {
-            &trimmed[1..trimmed.len() - 1]
-        } else {
-            trimmed
-        };
-
-        let content = content.replace("\\n", "\n");
-
-        result_text = content.to_string();
-    }
-
-    let state = &mut app.result_page_state;
-
-    let mut result_page = ResultPage::new(result_text.clone(), state);
-    let mut last_draw = std::time::Instant::now();
-    while !state.ack {
-        // Force redraw every 100ms for smooth animation
-        let now = std::time::Instant::now();
-        if now.duration_since(last_draw) >= std::time::Duration::from_millis(100) {
-            terminal
-                .draw(|frame: &mut Frame| {
-                    frame.render_stateful_widget(&result_page, frame.size(), state);
-                })
-                .unwrap();
-            last_draw = now;
-        }
-        result_page.handle_key_event(state);
     }
 
     // Restore terminal

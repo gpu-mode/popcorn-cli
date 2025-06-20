@@ -56,6 +56,7 @@ pub enum AppState {
     GpuSelection,
     SubmissionModeSelection,
     WaitingForResult,
+    ShowingResult,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
