@@ -14,6 +14,19 @@ use ratatui::{
 use std::io;
 use crate::views::ascii_art::{AsciiArt, create_background_pattern};
 
+// Color constants
+const COLOR_TITLE: Color = Color::Rgb(218, 119, 86);      // #da7756 - Orange
+const COLOR_BACKGROUND: Color = Color::Rgb(139, 69, 19);  // Dark orange/brown
+const COLOR_SELECTED: Color = Color::Yellow;
+const COLOR_UNSELECTED: Color = Color::Rgb(169, 169, 169); // Light gray
+
+// Layout constants
+const TITLE_HEIGHT: u16 = 10;
+const TITLE_SPACING: u16 = 3;
+const MENU_ITEM_HEIGHT: u16 = 3;
+const MENU_ITEM_SPACING: u16 = 2;
+const HORIZONTAL_MARGIN: u16 = 20; // Percentage for centering
+
 pub struct WelcomeScreen {
     selected_index: usize,
     menu_items: Vec<String>,
@@ -76,36 +89,70 @@ impl WelcomeScreen {
         }
     }
 
-    fn ui(&self, f: &mut ratatui::Frame) {
-        // Create a retro background pattern
-        let bg_text = create_background_pattern(f.size().width, f.size().height);
-        let background = Paragraph::new(bg_text)
-            .style(Style::default().fg(Color::Rgb(139, 69, 19))); // Dark orange/brown
-        f.render_widget(background, f.size());
-
-        let chunks = Layout::default()
+    fn create_centered_menu_areas(&self, menu_chunk: ratatui::layout::Rect) -> Vec<ratatui::layout::Rect> {
+        // Create menu areas with spacing
+        let menu_areas = Layout::default()
             .direction(Direction::Vertical)
-            .margin(1)
+            .constraints(
+                self.menu_items
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(i, _)| {
+                        if i == 0 {
+                            vec![Constraint::Length(MENU_ITEM_HEIGHT)]
+                        } else {
+                            vec![Constraint::Length(MENU_ITEM_SPACING), Constraint::Length(MENU_ITEM_HEIGHT)]
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .split(menu_chunk);
+
+        // Center each menu area horizontally
+        menu_areas
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &area)| {
+                // Only return the actual menu item areas, not the spacing
+                if i % 2 == 0 {
+                    Some(self.center_horizontally(area))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    fn center_horizontally(&self, area: ratatui::layout::Rect) -> ratatui::layout::Rect {
+        Layout::default()
+            .direction(Direction::Horizontal)
             .constraints(
                 [
-                    Constraint::Length(10), // ASCII art title (increased for filled version)
-                    Constraint::Length(3),  // Spacing
-                    Constraint::Min(5),     // Menu
+                    Constraint::Percentage(HORIZONTAL_MARGIN),
+                    Constraint::Percentage(100 - 2 * HORIZONTAL_MARGIN),
+                    Constraint::Percentage(HORIZONTAL_MARGIN),
                 ]
                 .as_ref(),
             )
-            .split(f.size());
+            .split(area)[1]
+    }
 
-        // ASCII art title - filled version
+    fn render_background(&self, f: &mut ratatui::Frame) {
+        let bg_text = create_background_pattern(f.size().width, f.size().height);
+        let background = Paragraph::new(bg_text)
+            .style(Style::default().fg(COLOR_BACKGROUND));
+        f.render_widget(background, f.size());
+    }
+
+    fn render_title(&self, f: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         let title_text = AsciiArt::kernelbot_title();
-
         let title_lines: Vec<Line> = title_text
             .iter()
             .map(|&line| {
                 Line::from(vec![Span::styled(
                     line,
                     Style::default()
-                        .fg(Color::Rgb(218, 119, 86))  // #da7756
+                        .fg(COLOR_TITLE)
                         .add_modifier(Modifier::BOLD),
                 )])
             })
@@ -115,69 +162,60 @@ impl WelcomeScreen {
             .alignment(Alignment::Center)
             .block(Block::default());
 
-        f.render_widget(title, chunks[0]);
+        f.render_widget(title, area);
+    }
 
-        // Menu - arcade style with medium text
-        let menu_area = Layout::default()
+    fn render_menu_item(&self, f: &mut ratatui::Frame, item: &str, area: ratatui::layout::Rect, is_selected: bool) {
+        let menu_lines = match item {
+            "Submit" => AsciiArt::submit_menu_item(is_selected),
+            "View History" => AsciiArt::history_menu_item(is_selected),
+            _ => return,
+        };
+        
+        let style = if is_selected {
+            Style::default()
+                .fg(COLOR_SELECTED)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .fg(COLOR_UNSELECTED)
+        };
+
+        let menu_text = menu_lines.join("\n");
+        let menu_item = Paragraph::new(menu_text)
+            .style(style)
+            .alignment(Alignment::Center);
+
+        f.render_widget(menu_item, area);
+    }
+
+    fn ui(&self, f: &mut ratatui::Frame) {
+        // Render background
+        self.render_background(f);
+
+        // Create main layout
+        let chunks = Layout::default()
             .direction(Direction::Vertical)
+            .margin(1)
             .constraints(
                 [
-                    Constraint::Length(3),  // First menu item (medium)
-                    Constraint::Length(2),  // Spacing
-                    Constraint::Length(3),  // Second menu item (medium)
+                    Constraint::Length(TITLE_HEIGHT),
+                    Constraint::Length(TITLE_SPACING),
+                    Constraint::Min(5), // Menu
                 ]
                 .as_ref(),
             )
-            .split(chunks[2]);
+            .split(f.size());
 
-        // Center the menu horizontally
-        let centered_menu_area: Vec<_> = menu_area
-            .iter()
-            .map(|&area| {
-                Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints(
-                        [
-                            Constraint::Percentage(20),
-                            Constraint::Percentage(60),
-                            Constraint::Percentage(20),
-                        ]
-                        .as_ref(),
-                    )
-                    .split(area)[1]
-            })
-            .collect();
+        // Render title
+        self.render_title(f, chunks[0]);
 
-        // Render each menu item separately for arcade-style appearance
-        for (i, item) in self.menu_items.iter().enumerate() {
-            let area_index = i * 2; // Skip spacing constraints
-            if area_index < centered_menu_area.len() {
-                let is_selected = i == self.selected_index;
-                
-                // Get ASCII art for menu items
-                let menu_lines = match item.as_str() {
-                    "Submit" => AsciiArt::submit_menu_item(is_selected),
-                    "View History" => AsciiArt::history_menu_item(is_selected),
-                    _ => continue,
-                };
-                
-                let style = if is_selected {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default()
-                        .fg(Color::Rgb(169, 169, 169)) // Light gray
-                };
+        // Create centered menu areas
+        let menu_areas = self.create_centered_menu_areas(chunks[2]);
 
-                let menu_text = menu_lines.join("\n");
-                let menu_item = Paragraph::new(menu_text)
-                    .style(style)
-                    .alignment(Alignment::Center);
-
-                f.render_widget(menu_item, centered_menu_area[area_index]);
-            }
+        // Render menu items
+        for (i, (item, area)) in self.menu_items.iter().zip(menu_areas.iter()).enumerate() {
+            self.render_menu_item(f, item, *area, i == self.selected_index);
         }
-
     }
 }
