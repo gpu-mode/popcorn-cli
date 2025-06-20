@@ -1,150 +1,93 @@
-use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
-    backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Paragraph},
-    Terminal,
+    Frame,
 };
-use std::io;
 use crate::views::ascii_art::{AsciiArt, create_background_pattern};
 
 // Color constants
-const COLOR_TITLE: Color = Color::Rgb(218, 119, 86);      // #da7756 - Orange
-const COLOR_BACKGROUND: Color = Color::Rgb(139, 69, 19);  // Dark orange/brown
-const COLOR_SELECTED: Color = Color::Yellow;
-const COLOR_UNSELECTED: Color = Color::Rgb(169, 169, 169); // Light gray
+pub const COLOR_TITLE: Color = Color::Rgb(218, 119, 86);      // #da7756 - Orange
+pub const COLOR_BACKGROUND: Color = Color::Rgb(139, 69, 19);  // Dark orange/brown
+pub const COLOR_SELECTED: Color = Color::Yellow;
+pub const COLOR_UNSELECTED: Color = Color::Rgb(169, 169, 169); // Light gray
 
 // Layout constants
-const TITLE_HEIGHT: u16 = 10;
-const TITLE_SPACING: u16 = 3;
-const MENU_ITEM_HEIGHT: u16 = 3;
-const MENU_ITEM_SPACING: u16 = 2;
-const HORIZONTAL_MARGIN: u16 = 20; // Percentage for centering
+pub const TITLE_HEIGHT: u16 = 10;
+pub const TITLE_SPACING: u16 = 3;
+pub const MENU_ITEM_HEIGHT: u16 = 3;
+pub const MENU_ITEM_SPACING: u16 = 2;
+pub const HORIZONTAL_MARGIN: u16 = 20; // Percentage for centering
 
-pub struct WelcomeScreen {
-    selected_index: usize,
-    menu_items: Vec<String>,
+#[derive(Debug, PartialEq)]
+pub enum WelcomeAction {
+    Handled,
+    NotHandled,
+    Submit,
+    ViewHistory,
 }
 
-impl WelcomeScreen {
+pub struct WelcomeView {
+    selected_index: usize,
+}
+
+impl WelcomeView {
     pub fn new() -> Self {
-        Self {
-            selected_index: 0,
-            menu_items: vec!["Submit".to_string(), "View History".to_string()],
-        }
+        Self { selected_index: 0 }
     }
 
-    pub async fn run(&mut self) -> io::Result<Option<String>> {
-        enable_raw_mode()?;
-        let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-        let backend = CrosstermBackend::new(stdout);
-        let mut terminal = Terminal::new(backend)?;
-
-        let result = self.run_app(&mut terminal).await;
-
-        disable_raw_mode()?;
-        execute!(
-            terminal.backend_mut(),
-            LeaveAlternateScreen,
-            DisableMouseCapture
-        )?;
-        terminal.show_cursor()?;
-
-        result
+    pub fn selected_index(&self) -> usize {
+        self.selected_index
     }
 
-    async fn run_app<B: ratatui::backend::Backend>(
-        &mut self,
-        terminal: &mut Terminal<B>,
-    ) -> io::Result<Option<String>> {
-        loop {
-            terminal.draw(|f| self.ui(f))?;
-
-            if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => return Ok(None),
-                    KeyCode::Enter => {
-                        return Ok(Some(self.menu_items[self.selected_index].clone()));
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        if self.selected_index < self.menu_items.len() - 1 {
-                            self.selected_index += 1;
-                        }
-                    }
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        if self.selected_index > 0 {
-                            self.selected_index -= 1;
-                        }
-                    }
-                    _ => {}
+    pub fn handle_key_event(&mut self, key: KeyEvent) -> WelcomeAction {
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                if self.selected_index > 0 {
+                    self.selected_index -= 1;
+                }
+                WelcomeAction::Handled
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if self.selected_index < 1 { // We have 2 menu items (0 and 1)
+                    self.selected_index += 1;
+                }
+                WelcomeAction::Handled
+            }
+            KeyCode::Enter => {
+                match self.selected_index {
+                    0 => WelcomeAction::Submit,
+                    1 => WelcomeAction::ViewHistory,
+                    _ => WelcomeAction::Handled,
                 }
             }
+            _ => WelcomeAction::NotHandled
         }
     }
 
-    fn create_centered_menu_areas(&self, menu_chunk: ratatui::layout::Rect) -> Vec<ratatui::layout::Rect> {
-        // Create menu areas with spacing
-        let menu_areas = Layout::default()
+    pub fn render(&self, frame: &mut Frame) {
+        // Create a retro background pattern
+        let bg_text = create_background_pattern(frame.size().width, frame.size().height);
+        let background = Paragraph::new(bg_text)
+            .style(Style::default().fg(COLOR_BACKGROUND));
+        frame.render_widget(background, frame.size());
+
+        let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(
-                self.menu_items
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(i, _)| {
-                        if i == 0 {
-                            vec![Constraint::Length(MENU_ITEM_HEIGHT)]
-                        } else {
-                            vec![Constraint::Length(MENU_ITEM_SPACING), Constraint::Length(MENU_ITEM_HEIGHT)]
-                        }
-                    })
-                    .collect::<Vec<_>>(),
-            )
-            .split(menu_chunk);
-
-        // Center each menu area horizontally
-        menu_areas
-            .iter()
-            .enumerate()
-            .filter_map(|(i, &area)| {
-                // Only return the actual menu item areas, not the spacing
-                if i % 2 == 0 {
-                    Some(self.center_horizontally(area))
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    fn center_horizontally(&self, area: ratatui::layout::Rect) -> ratatui::layout::Rect {
-        Layout::default()
-            .direction(Direction::Horizontal)
+            .margin(1)
             .constraints(
                 [
-                    Constraint::Percentage(HORIZONTAL_MARGIN),
-                    Constraint::Percentage(100 - 2 * HORIZONTAL_MARGIN),
-                    Constraint::Percentage(HORIZONTAL_MARGIN),
+                    Constraint::Length(TITLE_HEIGHT),
+                    Constraint::Length(TITLE_SPACING),
+                    Constraint::Min(10),
                 ]
                 .as_ref(),
             )
-            .split(area)[1]
-    }
+            .split(frame.size());
 
-    fn render_background(&self, f: &mut ratatui::Frame) {
-        let bg_text = create_background_pattern(f.size().width, f.size().height);
-        let background = Paragraph::new(bg_text)
-            .style(Style::default().fg(COLOR_BACKGROUND));
-        f.render_widget(background, f.size());
-    }
-
-    fn render_title(&self, f: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        // ASCII art title
         let title_text = AsciiArt::kernelbot_title();
         let title_lines: Vec<Line> = title_text
             .iter()
@@ -162,60 +105,70 @@ impl WelcomeScreen {
             .alignment(Alignment::Center)
             .block(Block::default());
 
-        f.render_widget(title, area);
-    }
+        frame.render_widget(title, chunks[0]);
 
-    fn render_menu_item(&self, f: &mut ratatui::Frame, item: &str, area: ratatui::layout::Rect, is_selected: bool) {
-        let menu_lines = match item {
-            "Submit" => AsciiArt::submit_menu_item(is_selected),
-            "View History" => AsciiArt::history_menu_item(is_selected),
-            _ => return,
-        };
-        
-        let style = if is_selected {
-            Style::default()
-                .fg(COLOR_SELECTED)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-                .fg(COLOR_UNSELECTED)
-        };
-
-        let menu_text = menu_lines.join("\n");
-        let menu_item = Paragraph::new(menu_text)
-            .style(style)
-            .alignment(Alignment::Center);
-
-        f.render_widget(menu_item, area);
-    }
-
-    fn ui(&self, f: &mut ratatui::Frame) {
-        // Render background
-        self.render_background(f);
-
-        // Create main layout
-        let chunks = Layout::default()
+        // Menu
+        let menu_items = vec!["Submit", "View History"];
+        let menu_area = Layout::default()
             .direction(Direction::Vertical)
-            .margin(1)
             .constraints(
                 [
-                    Constraint::Length(TITLE_HEIGHT),
-                    Constraint::Length(TITLE_SPACING),
-                    Constraint::Min(5), // Menu
+                    Constraint::Length(MENU_ITEM_HEIGHT),
+                    Constraint::Length(MENU_ITEM_SPACING),
+                    Constraint::Length(MENU_ITEM_HEIGHT),
                 ]
                 .as_ref(),
             )
-            .split(f.size());
+            .split(chunks[2]);
 
-        // Render title
-        self.render_title(f, chunks[0]);
-
-        // Create centered menu areas
-        let menu_areas = self.create_centered_menu_areas(chunks[2]);
+        // Center the menu horizontally
+        let centered_menu_area: Vec<_> = menu_area
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &area)| {
+                if i % 2 == 0 {
+                    Some(Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints(
+                            [
+                                Constraint::Percentage(HORIZONTAL_MARGIN),
+                                Constraint::Percentage(100 - 2 * HORIZONTAL_MARGIN),
+                                Constraint::Percentage(HORIZONTAL_MARGIN),
+                            ]
+                            .as_ref(),
+                        )
+                        .split(area)[1])
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         // Render menu items
-        for (i, (item, area)) in self.menu_items.iter().zip(menu_areas.iter()).enumerate() {
-            self.render_menu_item(f, item, *area, i == self.selected_index);
+        for (i, (item, area)) in menu_items.iter().zip(centered_menu_area.iter()).enumerate() {
+            let is_selected = i == self.selected_index;
+            
+            let menu_lines = match *item {
+                "Submit" => AsciiArt::submit_menu_item(is_selected),
+                "View History" => AsciiArt::history_menu_item(is_selected),
+                _ => continue,
+            };
+            
+            let style = if is_selected {
+                Style::default()
+                    .fg(COLOR_SELECTED)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+                    .fg(COLOR_UNSELECTED)
+            };
+
+            let menu_text = menu_lines.join("\n");
+            let menu_item = Paragraph::new(menu_text)
+                .style(style)
+                .alignment(Alignment::Center);
+
+            frame.render_widget(menu_item, *area);
         }
     }
 }
