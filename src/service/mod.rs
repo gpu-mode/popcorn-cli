@@ -58,7 +58,7 @@ pub async fn fetch_leaderboards(client: &Client) -> Result<Vec<LeaderboardItem>>
         let name = lb["name"]
             .as_str()
             .ok_or_else(|| anyhow!("Invalid JSON structure"))?;
-        let description = task["description"]
+        let description = lb["description"]
             .as_str()
             .ok_or_else(|| anyhow!("Invalid JSON structure"))?;
 
