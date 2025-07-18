@@ -158,7 +158,16 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 )
                 .await
             } else {
-                Err(anyhow!("No command or submission file specified. Use --help for usage."))
+                // No file provided, start with welcome screen
+                let config = load_config()?;
+                let cli_id = config.cli_id.ok_or_else(|| {
+                    anyhow!(
+                        "cli_id not found in config file ({}). Please run `popcorn register` first.",
+                        get_config_path()
+                            .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
+                    )
+                })?;
+                submit::run_submit_tui(None, None, None, None, cli_id).await
             }
         }
     }

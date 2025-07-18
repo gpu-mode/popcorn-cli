@@ -6,18 +6,21 @@ use anyhow::{anyhow, Result};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen};
 use ratatui::prelude::*;
-use ratatui::style::{Color, Style, Stylize};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
+use ratatui::widgets::ListState;
 use tokio::task::JoinHandle;
 
-use crate::models::{AppState, GpuItem, LeaderboardItem, SubmissionModeItem};
+use crate::models::{
+    AppState, GpuItem, GpuSelectionView, LeaderboardItem, LeaderboardSelectionView,
+    SelectionAction, SelectionItem, SelectionView, SubmissionModeItem, SubmissionModeSelectionView,
+};
 use crate::service;
 use crate::utils;
+use crate::views::file_selection_page::{FileSelectionAction, FileSelectionView};
 use crate::views::loading_page::{LoadingPage, LoadingPageState};
-use crate::views::result_page::{ResultPage, ResultPageState};
+use crate::views::result_page::{ResultAction, ResultPageState, ResultView};
+use crate::views::welcome_page::{WelcomeAction, WelcomeView};
 
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub struct App {
     pub filepath: String,
     pub cli_id: String,
@@ -35,20 +38,25 @@ pub struct App {
     pub selected_submission_mode: Option<String>,
 
     pub app_state: AppState,
-    pub final_status: Option<String>,
-
     pub should_quit: bool,
     pub submission_task: Option<JoinHandle<Result<String, anyhow::Error>>>,
     pub leaderboards_task: Option<JoinHandle<Result<Vec<LeaderboardItem>, anyhow::Error>>>,
     pub gpus_task: Option<JoinHandle<Result<Vec<GpuItem>, anyhow::Error>>>,
 
     pub loading_page_state: LoadingPageState,
-
     pub result_page_state: ResultPageState,
+
+    // View instances
+    pub welcome_view: Option<WelcomeView>,
+    pub file_selection_view: Option<FileSelectionView>,
+    pub leaderboard_view: Option<LeaderboardSelectionView>,
+    pub gpu_view: Option<GpuSelectionView>,
+    pub submission_mode_view: Option<SubmissionModeSelectionView>,
+    pub result_view: Option<ResultView>,
 }
 
 impl App {
-    pub fn new<P: AsRef<Path>>(filepath: P, cli_id: String) -> Self {
+    pub fn new(filepath: Option<String>, cli_id: String) -> Self {
         let submission_modes = vec![
             SubmissionModeItem::new(
                 "Test".to_string(),
@@ -73,12 +81,25 @@ impl App {
         ];
 
         let mut app = Self {
-            filepath: filepath.as_ref().to_string_lossy().to_string(),
+            filepath: filepath.unwrap_or_default(),
             cli_id,
             submission_modes,
             selected_submission_mode: None,
+            welcome_view: Some(WelcomeView::new()),
+            file_selection_view: None,
+            leaderboard_view: None,
+            gpu_view: None,
+            submission_mode_view: None,
+            result_view: None,
             ..Default::default()
         };
+
+        // Set initial state based on whether filepath is provided
+        if app.filepath.is_empty() {
+            app.app_state = AppState::Welcome;
+        } else {
+            app.app_state = AppState::LeaderboardSelection;
+        }
 
         app.leaderboards_state.select(Some(0));
         app.gpus_state.select(Some(0));
@@ -104,159 +125,218 @@ impl App {
     }
 
     pub fn initialize_with_directives(&mut self, popcorn_directives: utils::PopcornDirectives) {
-        if !popcorn_directives.leaderboard_name.is_empty() {
-            self.selected_leaderboard = Some(popcorn_directives.leaderboard_name);
+        let has_leaderboard = !popcorn_directives.leaderboard_name.is_empty();
+        let has_gpu = !popcorn_directives.gpus.is_empty();
 
-            if !popcorn_directives.gpus.is_empty() {
-                self.selected_gpu = Some(popcorn_directives.gpus[0].clone());
+        // Set the selected values from directives
+        if has_leaderboard {
+            self.selected_leaderboard = Some(popcorn_directives.leaderboard_name.clone());
+        }
+        if has_gpu {
+            self.selected_gpu = Some(popcorn_directives.gpus[0].clone());
+        }
+
+        // Determine initial state based on what's available
+        match (has_leaderboard, has_gpu) {
+            (true, true) => {
+                // Both leaderboard and GPU specified - go directly to submission mode selection
                 self.app_state = AppState::SubmissionModeSelection;
-            } else {
+                self.submission_mode_view = Some(SubmissionModeSelectionView::new(
+                    self.submission_modes.clone(),
+                    popcorn_directives.leaderboard_name,
+                    popcorn_directives.gpus[0].clone(),
+                ));
+            }
+            (true, false) => {
+                // Only leaderboard specified - need to select GPU
                 self.app_state = AppState::GpuSelection;
             }
-        } else if !popcorn_directives.gpus.is_empty() {
-            self.selected_gpu = Some(popcorn_directives.gpus[0].clone());
-            if !popcorn_directives.leaderboard_name.is_empty() {
-                self.selected_leaderboard = Some(popcorn_directives.leaderboard_name);
-                self.app_state = AppState::SubmissionModeSelection;
-            } else {
+            (false, true) => {
+                // Only GPU specified - need to select leaderboard
                 self.app_state = AppState::LeaderboardSelection;
             }
-        } else {
-            self.app_state = AppState::LeaderboardSelection;
+            (false, false) => {
+                // Neither specified - start from leaderboard selection
+                self.app_state = AppState::LeaderboardSelection;
+            }
         }
     }
 
     pub fn handle_key_event(&mut self, key: KeyEvent) -> Result<bool> {
-        // Allow quitting anytime, even while loading
+        // Global key handling (esc, ctrl+c)
         if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
             self.should_quit = true;
             return Ok(true);
         }
 
-        match key.code {
-            KeyCode::Char('q') => {
-                self.should_quit = true;
-                return Ok(true);
+        if key.code == KeyCode::Esc {
+            self.should_quit = true;
+            return Ok(true);
+        }
+
+        // Delegate to views based on current state
+        match self.app_state {
+            AppState::Welcome => {
+                if let Some(view) = &mut self.welcome_view {
+                    match view.handle_key_event(key) {
+                        WelcomeAction::Submit => {
+                            self.app_state = AppState::FileSelection;
+                            self.file_selection_view = Some(FileSelectionView::new()?);
+                            return Ok(true);
+                        }
+                        WelcomeAction::ViewHistory => {
+                            self.show_error(
+                                "View History feature is not yet implemented".to_string(),
+                            );
+                            return Ok(true);
+                        }
+                        WelcomeAction::Handled => return Ok(true),
+                        WelcomeAction::NotHandled => return Ok(false),
+                    }
+                }
             }
-            KeyCode::Enter => match self.app_state {
-                AppState::LeaderboardSelection => {
-                    if let Some(idx) = self.leaderboards_state.selected() {
-                        if idx < self.leaderboards.len() {
-                            self.selected_leaderboard =
-                                Some(self.leaderboards[idx].title_text.clone());
+            AppState::FileSelection => {
+                if let Some(view) = &mut self.file_selection_view {
+                    match view.handle_key_event(key)? {
+                        FileSelectionAction::FileSelected(filepath) => {
+                            self.filepath = filepath.clone();
+
+                            // Parse directives from the selected file
+                            match utils::get_popcorn_directives(&filepath) {
+                                Ok((directives, has_multiple_gpus)) => {
+                                    if has_multiple_gpus {
+                                        self.show_error("Multiple GPUs are not supported yet. Please specify only one GPU.".to_string());
+                                        return Ok(true);
+                                    }
+
+                                    // Apply directives to determine next state
+                                    self.initialize_with_directives(directives);
+
+                                    // Spawn appropriate task based on the new state
+                                    // TODO: make spawn_x tasks also show error if they fail, a lot of duplicate code
+                                    match self.app_state {
+                                        AppState::LeaderboardSelection => {
+                                            if let Err(e) = self.spawn_load_leaderboards() {
+                                                self.show_error(format!(
+                                                    "Error starting leaderboard fetch: {}",
+                                                    e
+                                                ));
+                                            }
+                                        }
+                                        AppState::GpuSelection => {
+                                            if let Err(e) = self.spawn_load_gpus() {
+                                                self.show_error(format!(
+                                                    "Error starting GPU fetch: {}",
+                                                    e
+                                                ));
+                                            }
+                                        }
+                                        AppState::SubmissionModeSelection => {
+                                            // View already created in initialize_with_directives
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                Err(e) => {
+                                    self.show_error(format!(
+                                        "Error parsing file directives: {}",
+                                        e
+                                    ));
+                                    return Ok(true);
+                                }
+                            }
+                            return Ok(true);
+                        }
+                        FileSelectionAction::Handled => return Ok(true),
+                        FileSelectionAction::NotHandled => return Ok(false),
+                    }
+                }
+            }
+            AppState::LeaderboardSelection => {
+                if let Some(view) = &mut self.leaderboard_view {
+                    match view.handle_key_event(key) {
+                        SelectionAction::Selected(idx) => {
+                            self.selected_leaderboard = Some(view.items()[idx].title().to_string());
 
                             if self.selected_gpu.is_none() {
                                 self.app_state = AppState::GpuSelection;
                                 if let Err(e) = self.spawn_load_gpus() {
-                                    self.set_error_and_quit(format!(
-                                        "Error starting GPU fetch: {}",
-                                        e
-                                    ));
+                                    self.show_error(format!("Error starting GPU fetch: {}", e));
                                 }
                             } else {
                                 self.app_state = AppState::SubmissionModeSelection;
-                            }
-                            return Ok(true);
-                        }
-                    }
-                }
-                AppState::GpuSelection => {
-                    if let Some(idx) = self.gpus_state.selected() {
-                        if idx < self.gpus.len() {
-                            self.selected_gpu = Some(self.gpus[idx].title_text.clone());
-                            self.app_state = AppState::SubmissionModeSelection;
-                            return Ok(true);
-                        }
-                    }
-                }
-                AppState::SubmissionModeSelection => {
-                    if let Some(idx) = self.submission_modes_state.selected() {
-                        if idx < self.submission_modes.len() {
-                            self.selected_submission_mode =
-                                Some(self.submission_modes[idx].value.clone());
-                            self.app_state = AppState::WaitingForResult;
-                            if let Err(e) = self.spawn_submit_solution() {
-                                self.set_error_and_quit(format!(
-                                    "Error starting submission: {}",
-                                    e
+                                self.submission_mode_view = Some(SubmissionModeSelectionView::new(
+                                    self.submission_modes.clone(),
+                                    self.selected_leaderboard.as_ref().unwrap().clone(),
+                                    self.selected_gpu.as_ref().unwrap().clone(),
                                 ));
                             }
                             return Ok(true);
                         }
+                        SelectionAction::Handled => return Ok(true),
+                        SelectionAction::NotHandled => return Ok(false),
                     }
                 }
-                _ => {}
-            },
-            KeyCode::Up => {
-                self.move_selection_up();
-                return Ok(true);
             }
-            KeyCode::Down => {
-                self.move_selection_down();
-                return Ok(true);
+            AppState::GpuSelection => {
+                if let Some(view) = &mut self.gpu_view {
+                    match view.handle_key_event(key) {
+                        SelectionAction::Selected(idx) => {
+                            self.selected_gpu = Some(view.items()[idx].title().to_string());
+                            self.app_state = AppState::SubmissionModeSelection;
+                            self.submission_mode_view = Some(SubmissionModeSelectionView::new(
+                                self.submission_modes.clone(),
+                                self.selected_leaderboard.as_ref().unwrap().clone(),
+                                self.selected_gpu.as_ref().unwrap().clone(),
+                            ));
+                            return Ok(true);
+                        }
+                        SelectionAction::Handled => return Ok(true),
+                        SelectionAction::NotHandled => return Ok(false),
+                    }
+                }
+            }
+            AppState::SubmissionModeSelection => {
+                if let Some(view) = &mut self.submission_mode_view {
+                    match view.handle_key_event(key) {
+                        SelectionAction::Selected(idx) => {
+                            self.selected_submission_mode = Some(view.items()[idx].value.clone());
+                            self.app_state = AppState::WaitingForResult;
+                            if let Err(e) = self.spawn_submit_solution() {
+                                self.show_error(format!("Error starting submission: {}", e));
+                            }
+                            return Ok(true);
+                        }
+                        SelectionAction::Handled => return Ok(true),
+                        SelectionAction::NotHandled => return Ok(false),
+                    }
+                }
+            }
+            AppState::ShowingResult => {
+                if let Some(view) = &mut self.result_view {
+                    match view.handle_key_event(key) {
+                        ResultAction::Quit => {
+                            self.should_quit = true;
+                            return Ok(true);
+                        }
+                        ResultAction::Handled => {
+                            // Update scroll state based on key
+                            view.update_scroll(key, &mut self.result_page_state);
+                            return Ok(true);
+                        }
+                        ResultAction::NotHandled => return Ok(false),
+                    }
+                }
             }
             _ => {}
         }
+
         Ok(false)
     }
 
-    fn set_error_and_quit(&mut self, error_message: String) {
-        self.final_status = Some(error_message);
-        self.should_quit = true;
-    }
-
-    fn move_selection_up(&mut self) {
-        match self.app_state {
-            AppState::LeaderboardSelection => {
-                if let Some(idx) = self.leaderboards_state.selected() {
-                    if idx > 0 {
-                        self.leaderboards_state.select(Some(idx - 1));
-                    }
-                }
-            }
-            AppState::GpuSelection => {
-                if let Some(idx) = self.gpus_state.selected() {
-                    if idx > 0 {
-                        self.gpus_state.select(Some(idx - 1));
-                    }
-                }
-            }
-            AppState::SubmissionModeSelection => {
-                if let Some(idx) = self.submission_modes_state.selected() {
-                    if idx > 0 {
-                        self.submission_modes_state.select(Some(idx - 1));
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    fn move_selection_down(&mut self) {
-        match self.app_state {
-            AppState::LeaderboardSelection => {
-                if let Some(idx) = self.leaderboards_state.selected() {
-                    if idx < self.leaderboards.len().saturating_sub(1) {
-                        self.leaderboards_state.select(Some(idx + 1));
-                    }
-                }
-            }
-            AppState::GpuSelection => {
-                if let Some(idx) = self.gpus_state.selected() {
-                    if idx < self.gpus.len().saturating_sub(1) {
-                        self.gpus_state.select(Some(idx + 1));
-                    }
-                }
-            }
-            AppState::SubmissionModeSelection => {
-                if let Some(idx) = self.submission_modes_state.selected() {
-                    if idx < self.submission_modes.len().saturating_sub(1) {
-                        self.submission_modes_state.select(Some(idx + 1));
-                    }
-                }
-            }
-            _ => {}
-        }
+    fn show_error(&mut self, error_message: String) {
+        self.result_view = Some(ResultView::new(error_message));
+        self.app_state = AppState::ShowingResult;
     }
 
     pub fn spawn_load_leaderboards(&mut self) -> Result<()> {
@@ -313,39 +393,46 @@ impl App {
                 let task = self.leaderboards_task.take().unwrap();
                 match task.await {
                     Ok(Ok(leaderboards)) => {
-                        self.leaderboards = leaderboards;
+                        self.leaderboards = leaderboards.clone();
+                        self.leaderboard_view = Some(LeaderboardSelectionView::new(leaderboards));
+
                         if let Some(selected_name) = &self.selected_leaderboard {
                             if let Some(index) = self
                                 .leaderboards
                                 .iter()
-                                .position(|lb| &lb.title_text == selected_name)
+                                .position(|lb| lb.title() == selected_name)
                             {
-                                self.leaderboards_state.select(Some(index));
+                                if let Some(view) = &mut self.leaderboard_view {
+                                    view.state_mut().select(Some(index));
+                                }
                                 if self.selected_gpu.is_some() {
                                     self.app_state = AppState::SubmissionModeSelection;
+                                    self.submission_mode_view =
+                                        Some(SubmissionModeSelectionView::new(
+                                            self.submission_modes.clone(),
+                                            self.selected_leaderboard.as_ref().unwrap().clone(),
+                                            self.selected_gpu.as_ref().unwrap().clone(),
+                                        ));
                                 } else {
                                     self.app_state = AppState::GpuSelection;
                                     if let Err(e) = self.spawn_load_gpus() {
-                                        self.set_error_and_quit(format!(
-                                            "Error starting GPU fetch: {}",
-                                            e
-                                        ));
+                                        self.show_error(format!("Error starting GPU fetch: {}", e));
                                         return;
                                     }
                                 }
                             } else {
                                 self.selected_leaderboard = None;
-                                self.leaderboards_state.select(Some(0));
+                                if let Some(view) = &mut self.leaderboard_view {
+                                    view.state_mut().select(Some(0));
+                                }
                                 self.app_state = AppState::LeaderboardSelection;
                             }
-                        } else {
-                            self.leaderboards_state.select(Some(0));
+                        } else if let Some(view) = &mut self.leaderboard_view {
+                            view.state_mut().select(Some(0));
                         }
                     }
-                    Ok(Err(e)) => {
-                        self.set_error_and_quit(format!("Error fetching leaderboards: {}", e))
-                    }
-                    Err(e) => self.set_error_and_quit(format!("Task join error: {}", e)),
+                    Ok(Err(e)) => self.show_error(format!("Error fetching leaderboards: {}", e)),
+                    Err(e) => self.show_error(format!("Task join error: {}", e)),
                 }
             }
         }
@@ -357,26 +444,43 @@ impl App {
                 let task = self.gpus_task.take().unwrap();
                 match task.await {
                     Ok(Ok(gpus)) => {
-                        self.gpus = gpus;
+                        self.gpus = gpus.clone();
+                        self.gpu_view = Some(GpuSelectionView::new(
+                            gpus,
+                            self.selected_leaderboard
+                                .as_ref()
+                                .unwrap_or(&"N/A".to_string())
+                                .clone(),
+                        ));
+
                         if let Some(selected_name) = &self.selected_gpu {
                             if let Some(index) = self
                                 .gpus
                                 .iter()
-                                .position(|gpu| &gpu.title_text == selected_name)
+                                .position(|gpu| gpu.title() == selected_name)
                             {
-                                self.gpus_state.select(Some(index));
+                                if let Some(view) = &mut self.gpu_view {
+                                    view.state_mut().select(Some(index));
+                                }
                                 self.app_state = AppState::SubmissionModeSelection;
+                                self.submission_mode_view = Some(SubmissionModeSelectionView::new(
+                                    self.submission_modes.clone(),
+                                    self.selected_leaderboard.as_ref().unwrap().clone(),
+                                    self.selected_gpu.as_ref().unwrap().clone(),
+                                ));
                             } else {
                                 self.selected_gpu = None;
-                                self.gpus_state.select(Some(0));
+                                if let Some(view) = &mut self.gpu_view {
+                                    view.state_mut().select(Some(0));
+                                }
                                 self.app_state = AppState::GpuSelection;
                             }
-                        } else {
-                            self.gpus_state.select(Some(0));
+                        } else if let Some(view) = &mut self.gpu_view {
+                            view.state_mut().select(Some(0));
                         }
                     }
-                    Ok(Err(e)) => self.set_error_and_quit(format!("Error fetching GPUs: {}", e)),
-                    Err(e) => self.set_error_and_quit(format!("Task join error: {}", e)),
+                    Ok(Err(e)) => self.show_error(format!("Error fetching GPUs: {}", e)),
+                    Err(e) => self.show_error(format!("Task join error: {}", e)),
                 }
             }
         }
@@ -388,131 +492,78 @@ impl App {
                 let task = self.submission_task.take().unwrap();
                 match task.await {
                     Ok(Ok(status)) => {
-                        self.final_status = Some(status);
-                        self.should_quit = true; // Quit after showing final status
+                        // Process the status text
+                        let trimmed = status.trim();
+                        let content = if trimmed.starts_with('[')
+                            && trimmed.ends_with(']')
+                            && trimmed.len() >= 2
+                        {
+                            &trimmed[1..trimmed.len() - 1]
+                        } else {
+                            trimmed
+                        };
+                        let content = content.replace("\\n", "\n");
+
+                        // Create result view and transition to showing result
+                        self.result_view = Some(ResultView::new(content));
+                        self.app_state = AppState::ShowingResult;
                     }
-                    Ok(Err(e)) => self.set_error_and_quit(format!("Submission error: {}", e)),
-                    Err(e) => self.set_error_and_quit(format!("Task join error: {}", e)),
+                    Ok(Err(e)) => {
+                        // Show error in result view
+                        self.result_view =
+                            Some(ResultView::new(format!("Submission error: {}", e)));
+                        self.app_state = AppState::ShowingResult;
+                    }
+                    Err(e) => {
+                        // Show task join error in result view
+                        self.result_view = Some(ResultView::new(format!("Task join error: {}", e)));
+                        self.app_state = AppState::ShowingResult;
+                    }
                 }
             }
         }
     }
 }
 
-pub fn ui(app: &App, frame: &mut Frame) {
-    let main_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0)].as_ref())
-        .split(frame.size());
-
-    let list_area = main_layout[0];
-    let available_width = list_area.width.saturating_sub(4) as usize;
-
-    let list_block = Block::default().borders(Borders::ALL);
-    let list_style = Style::default().fg(Color::White);
-
+pub fn ui(app: &mut App, frame: &mut Frame) {
     match app.app_state {
+        AppState::Welcome => {
+            if let Some(view) = &mut app.welcome_view {
+                view.render(frame);
+            }
+        }
+        AppState::FileSelection => {
+            if let Some(view) = &mut app.file_selection_view {
+                view.render(frame);
+            }
+        }
         AppState::LeaderboardSelection => {
-            let items: Vec<ListItem> = app
-                .leaderboards
-                .iter()
-                .map(|lb| {
-                    let title_line = Line::from(Span::styled(
-                        lb.title_text.clone(),
-                        Style::default().fg(Color::White).bold(),
-                    ));
-                    let mut lines = vec![title_line];
-                    for desc_part in lb.task_description.split('\n') {
-                        lines.push(Line::from(Span::styled(
-                            desc_part.to_string(),
-                            Style::default().fg(Color::Gray).dim(),
-                        )));
-                    }
-                    ListItem::new(lines)
-                })
-                .collect();
-            let list = List::new(items)
-                .block(list_block.title("Select Leaderboard"))
-                .style(list_style)
-                .highlight_style(Style::default().bg(Color::DarkGray))
-                .highlight_symbol("> ");
-            frame.render_stateful_widget(list, main_layout[0], &mut app.leaderboards_state.clone());
+            if let Some(view) = &mut app.leaderboard_view {
+                view.render(frame);
+            }
         }
         AppState::GpuSelection => {
-            let items: Vec<ListItem> = app
-                .gpus
-                .iter()
-                .map(|gpu| {
-                    let line = Line::from(vec![Span::styled(
-                        gpu.title_text.clone(),
-                        Style::default().fg(Color::White).bold(),
-                    )]);
-                    ListItem::new(line)
-                })
-                .collect();
-            let list = List::new(items)
-                .block(list_block.title(format!(
-                    "Select GPU for '{}'",
-                    app.selected_leaderboard.as_deref().unwrap_or("N/A")
-                )))
-                .style(list_style)
-                .highlight_style(Style::default().bg(Color::DarkGray))
-                .highlight_symbol("> ");
-            frame.render_stateful_widget(list, main_layout[0], &mut app.gpus_state.clone());
+            if let Some(view) = &mut app.gpu_view {
+                view.render(frame);
+            }
         }
         AppState::SubmissionModeSelection => {
-            let items: Vec<ListItem> = app
-                .submission_modes
-                .iter()
-                .map(|mode| {
-                    let strings = utils::custom_wrap(
-                        mode.title_text.clone(),
-                        mode.description_text.clone(),
-                        available_width,
-                    );
-
-                    let lines: Vec<Line> = strings
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, line)| {
-                            if i == 0 {
-                                Line::from(Span::styled(
-                                    line,
-                                    Style::default().fg(Color::White).bold(),
-                                ))
-                            } else {
-                                Line::from(Span::styled(
-                                    line.clone(),
-                                    Style::default().fg(Color::Gray).dim(),
-                                ))
-                            }
-                        })
-                        .collect::<Vec<Line>>();
-                    ListItem::new(lines)
-                })
-                .collect::<Vec<ListItem>>();
-            let list = List::new(items)
-                .block(list_block.title(format!(
-                    "Select Submission Mode for '{}' on '{}'",
-                    app.selected_leaderboard.as_deref().unwrap_or("N/A"),
-                    app.selected_gpu.as_deref().unwrap_or("N/A")
-                )))
-                .style(list_style)
-                .highlight_style(Style::default().bg(Color::DarkGray))
-                .highlight_symbol("> ");
-            frame.render_stateful_widget(
-                list,
-                main_layout[0],
-                &mut app.submission_modes_state.clone(),
-            );
+            if let Some(view) = &mut app.submission_mode_view {
+                view.render(frame);
+            }
         }
         AppState::WaitingForResult => {
             let loading_page = LoadingPage::default();
             frame.render_stateful_widget(
                 &loading_page,
-                main_layout[0],
+                frame.size(),
                 &mut app.loading_page_state.clone(),
             )
+        }
+        AppState::ShowingResult => {
+            if let Some(view) = &mut app.result_view {
+                view.render(frame, &mut app.result_page_state);
+            }
         }
     }
 }
@@ -525,69 +576,64 @@ pub async fn run_submit_tui(
     cli_id: String,
 ) -> Result<()> {
     let file_to_submit = match filepath {
-        Some(fp) => fp,
-        None => {
-            // Prompt user for filepath if not provided
-            println!("Please enter the path to your solution file:");
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
-            input.trim().to_string()
+        Some(fp) => {
+            if !Path::new(&fp).exists() {
+                return Err(anyhow!("File not found: {}", fp));
+            }
+            Some(fp)
         }
+        None => None,
     };
 
-    if !Path::new(&file_to_submit).exists() {
-        return Err(anyhow!("File not found: {}", file_to_submit));
-    }
+    let mut app = App::new(file_to_submit.clone(), cli_id);
 
-    let (directives, has_multiple_gpus) = utils::get_popcorn_directives(&file_to_submit)?;
+    // If we have a filepath, process directives and setup initial state
+    if let Some(ref file_path) = file_to_submit {
+        let (directives, has_multiple_gpus) = utils::get_popcorn_directives(file_path)?;
 
-    if has_multiple_gpus {
-        return Err(anyhow!(
-            "Multiple GPUs are not supported yet. Please specify only one GPU."
-        ));
-    }
-
-    let mut app = App::new(&file_to_submit, cli_id);
-
-    // Override directives with CLI flags if provided
-    if let Some(gpu_flag) = gpu {
-        app.selected_gpu = Some(gpu_flag);
-    }
-    if let Some(leaderboard_flag) = leaderboard {
-        app.selected_leaderboard = Some(leaderboard_flag);
-    }
-    if let Some(mode_flag) = mode {
-        app.selected_submission_mode = Some(mode_flag);
-        // Skip to submission if we have all required fields
-        if app.selected_gpu.is_some() && app.selected_leaderboard.is_some() {
-            app.app_state = AppState::WaitingForResult;
+        if has_multiple_gpus {
+            return Err(anyhow!(
+                "Multiple GPUs are not supported yet. Please specify only one GPU."
+            ));
         }
-    }
 
-    // If no CLI flags, use directives
-    if app.selected_gpu.is_none() && app.selected_leaderboard.is_none() {
+        // First apply directives as defaults
         app.initialize_with_directives(directives);
-    }
 
-    // Spawn the initial task based on the starting state BEFORE setting up the TUI
-    // If spawning fails here, we just return the error directly without TUI cleanup.
-    match app.app_state {
-        AppState::LeaderboardSelection => {
-            if let Err(e) = app.spawn_load_leaderboards() {
-                return Err(anyhow!("Error starting leaderboard fetch: {}", e));
+        // Then override with CLI flags if provided
+        if let Some(gpu_flag) = gpu {
+            app.selected_gpu = Some(gpu_flag);
+        }
+        if let Some(leaderboard_flag) = leaderboard {
+            app.selected_leaderboard = Some(leaderboard_flag);
+        }
+        if let Some(mode_flag) = mode {
+            app.selected_submission_mode = Some(mode_flag);
+            // Skip to submission if we have all required fields
+            if app.selected_gpu.is_some() && app.selected_leaderboard.is_some() {
+                app.app_state = AppState::WaitingForResult;
             }
         }
-        AppState::GpuSelection => {
-            if let Err(e) = app.spawn_load_gpus() {
-                return Err(anyhow!("Error starting GPU fetch: {}", e));
+
+        // Spawn the initial task based on the starting state BEFORE setting up the TUI
+        match app.app_state {
+            AppState::LeaderboardSelection => {
+                if let Err(e) = app.spawn_load_leaderboards() {
+                    return Err(anyhow!("Error starting leaderboard fetch: {}", e));
+                }
             }
-        }
-        AppState::WaitingForResult => {
-            if let Err(e) = app.spawn_submit_solution() {
-                return Err(anyhow!("Error starting submission: {}", e));
+            AppState::GpuSelection => {
+                if let Err(e) = app.spawn_load_gpus() {
+                    return Err(anyhow!("Error starting GPU fetch: {}", e));
+                }
             }
+            AppState::WaitingForResult => {
+                if let Err(e) = app.spawn_submit_solution() {
+                    return Err(anyhow!("Error starting submission: {}", e));
+                }
+            }
+            _ => {}
         }
-        _ => {}
     }
 
     // Now, set up the TUI
@@ -598,7 +644,7 @@ pub async fn run_submit_tui(
     let mut terminal = Terminal::new(backend)?;
 
     while !app.should_quit {
-        terminal.draw(|f| ui(&app, f))?;
+        terminal.draw(|f| ui(&mut app, f))?;
 
         app.check_leaderboard_task().await;
         app.check_gpu_task().await;
@@ -615,39 +661,6 @@ pub async fn run_submit_tui(
         }
     }
 
-    let mut result_text = "Submission cancelled.".to_string();
-
-    if let Some(status) = app.final_status {
-        let trimmed = status.trim();
-        let content = if trimmed.starts_with('[') && trimmed.ends_with(']') && trimmed.len() >= 2 {
-            &trimmed[1..trimmed.len() - 1]
-        } else {
-            trimmed
-        };
-
-        let content = content.replace("\\n", "\n");
-
-        result_text = content.to_string();
-    }
-
-    let state = &mut app.result_page_state;
-
-    let mut result_page = ResultPage::new(result_text.clone(), state);
-    let mut last_draw = std::time::Instant::now();
-    while !state.ack {
-        // Force redraw every 100ms for smooth animation
-        let now = std::time::Instant::now();
-        if now.duration_since(last_draw) >= std::time::Duration::from_millis(100) {
-            terminal
-                .draw(|frame: &mut Frame| {
-                    frame.render_stateful_widget(&result_page, frame.size(), state);
-                })
-                .unwrap();
-            last_draw = now;
-        }
-        result_page.handle_key_event(state);
-    }
-
     // Restore terminal
     disable_raw_mode()?;
     crossterm::execute!(
@@ -655,8 +668,6 @@ pub async fn run_submit_tui(
         crossterm::terminal::LeaveAlternateScreen
     )?;
     terminal.show_cursor()?;
-
-    // utils::display_ascii_art();
 
     Ok(())
 }
