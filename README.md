@@ -18,6 +18,10 @@ Tested on linux and mac but should just work on Windows as well.
 1. Download rust `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 2. `cd popcorn-cli && ./build.sh`
 
+If you already have rust toolchain
+
+1. `cargo install --git https://github.com/gpu-mode/popcorn-cli.git`
+
 ## Authentication
 
 Since we're effectively giving out GPUs for free we rely on either github or discord authentication to prove that you're a real human before you access our service.
