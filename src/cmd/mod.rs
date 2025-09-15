@@ -51,10 +51,14 @@ pub struct Cli {
     /// Optional: Directly specify the leaderboard (e.g., "fp8")
     #[arg(long)]
     pub leaderboard: Option<String>,
-    
+
     /// Optional: Specify submission mode (test, benchmark, leaderboard, profile)
     #[arg(long)]
     pub mode: Option<String>,
+
+    // Optional: Specify output file
+    #[arg(short, long)]
+    pub output: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -88,6 +92,10 @@ enum Commands {
         /// Optional: Specify submission mode (test, benchmark, leaderboard, profile)
         #[arg(long)]
         mode: Option<String>,
+
+        // Optional: Specify output file
+        #[arg(short, long)]
+        output: Option<String>,
     },
 }
 
@@ -107,7 +115,13 @@ pub async fn execute(cli: Cli) -> Result<()> {
             };
             auth::run_auth(false, provider_str).await
         }
-        Some(Commands::Submit { filepath, gpu, leaderboard, mode }) => {
+        Some(Commands::Submit {
+            filepath,
+            gpu,
+            leaderboard,
+            mode,
+            output,
+        }) => {
             let config = load_config()?;
             let cli_id = config.cli_id.ok_or_else(|| {
                 anyhow!(
@@ -116,7 +130,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
                         .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
                 )
             })?;
-            
+
             // Use filepath from Submit command first, fallback to top-level filepath
             let final_filepath = filepath.or(cli.filepath);
             submit::run_submit_tui(
@@ -125,6 +139,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 leaderboard,    // From Submit command
                 mode,           // From Submit command
                 cli_id,
+                output, // From Submit command
             )
             .await
         }
@@ -136,7 +151,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
                     popcorn-cli submit [--gpu GPU] [--leaderboard LEADERBOARD] [--mode MODE] FILEPATH"
                 ));
             }
-            
+
             // Handle the case where only a filepath is provided (for backward compatibility)
             if let Some(top_level_filepath) = cli.filepath {
                 let config = load_config()?;
@@ -147,7 +162,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
                             .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
                     )
                 })?;
-                
+
                 // Run TUI with only filepath, no other options
                 submit::run_submit_tui(
                     Some(top_level_filepath),
@@ -155,6 +170,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
                     None, // No leaderboard option
                     None, // No mode option
                     cli_id,
+                    None, // No output option
                 )
                 .await
             } else {
