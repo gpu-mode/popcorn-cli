@@ -523,6 +523,7 @@ pub async fn run_submit_tui(
     leaderboard: Option<String>,
     mode: Option<String>,
     cli_id: String,
+    output: Option<String>,
 ) -> Result<()> {
     let file_to_submit = match filepath {
         Some(fp) => fp,
@@ -628,6 +629,17 @@ pub async fn run_submit_tui(
         let content = content.replace("\\n", "\n");
 
         result_text = content.to_string();
+    }
+
+    // write to file if output is specified
+    if let Some(output_path) = output {
+        // create parent directories if they don't exist
+        if let Some(parent) = Path::new(&output_path).parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| anyhow!("Failed to create directories for {}: {}", output_path, e))?;
+        }
+        std::fs::write(&output_path, &result_text)
+            .map_err(|e| anyhow!("Failed to write result to file {}: {}", output_path, e))?;
     }
 
     let state = &mut app.result_page_state;
