@@ -67,7 +67,7 @@ impl App {
             ),
             SubmissionModeItem::new(
                 "Profile".to_string(),
-                "Work in progress...".to_string(),
+                "Profile is currently supported only via Discord. We'll add this feature to the CLI soon.".to_string(),
                 "profile".to_string(),
             ),
         ];
