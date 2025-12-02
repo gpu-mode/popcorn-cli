@@ -301,8 +301,16 @@ impl App {
         file.read_to_string(&mut file_content)?;
 
         self.submission_task = Some(tokio::spawn(async move {
-            service::submit_solution(&client, &filepath, &file_content, &leaderboard, &gpu, &mode)
-                .await
+            service::submit_solution(
+                &client,
+                &filepath,
+                &file_content,
+                &leaderboard,
+                &gpu,
+                &mode,
+                None,
+            )
+            .await
         }));
         Ok(())
     }
@@ -669,6 +677,113 @@ pub async fn run_submit_tui(
     terminal.show_cursor()?;
 
     // utils::display_ascii_art();
+
+    Ok(())
+}
+
+pub async fn run_submit_plain(
+    filepath: Option<String>,
+    gpu: Option<String>,
+    leaderboard: Option<String>,
+    mode: Option<String>,
+    cli_id: String,
+    output: Option<String>,
+) -> Result<()> {
+    let file_to_submit = match filepath {
+        Some(fp) => fp,
+        None => {
+            return Err(anyhow!("File path is required when using --no-tui"));
+        }
+    };
+
+    if !Path::new(&file_to_submit).exists() {
+        return Err(anyhow!("File not found: {}", file_to_submit));
+    }
+
+    let (directives, has_multiple_gpus) = utils::get_popcorn_directives(&file_to_submit)?;
+
+    if has_multiple_gpus {
+        return Err(anyhow!(
+            "Multiple GPUs are not supported yet. Please specify only one GPU."
+        ));
+    }
+
+    // Determine final values
+    let final_gpu = gpu
+        .or_else(|| {
+            if !directives.gpus.is_empty() {
+                Some(directives.gpus[0].clone())
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| anyhow!("GPU not specified. Use --gpu flag or add GPU directive to file"))?;
+
+    let final_leaderboard = leaderboard
+        .or_else(|| {
+            if !directives.leaderboard_name.is_empty() {
+                Some(directives.leaderboard_name.clone())
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| {
+            anyhow!("Leaderboard not specified. Use --leaderboard flag or add leaderboard directive to file")
+        })?;
+
+    let final_mode = mode.ok_or_else(|| {
+        anyhow!("Submission mode not specified. Use --mode flag (test, benchmark, leaderboard, profile)")
+    })?;
+
+    // Read file content
+    let mut file = File::open(&file_to_submit)?;
+    let mut file_content = String::new();
+    file.read_to_string(&mut file_content)?;
+
+    eprintln!("Submitting to leaderboard: {}", final_leaderboard);
+    eprintln!("GPU: {}", final_gpu);
+    eprintln!("Mode: {}", final_mode);
+    eprintln!("File: {}", file_to_submit);
+    eprintln!("\nWaiting for results...");
+
+    // Create client and submit
+    let client = service::create_client(Some(cli_id))?;
+    let result = service::submit_solution(
+        &client,
+        &file_to_submit,
+        &file_content,
+        &final_leaderboard,
+        &final_gpu,
+        &final_mode,
+        Some(Box::new(|msg| {
+            eprintln!("{}", msg);
+        })),
+    )
+    .await?;
+
+    // Clean up the result text
+    let trimmed = result.trim();
+    let content = if trimmed.starts_with('[') && trimmed.ends_with(']') && trimmed.len() >= 2 {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    };
+
+    let content = content.replace("\\n", "\n");
+
+    // Write to file if output is specified
+    if let Some(output_path) = output {
+        if let Some(parent) = Path::new(&output_path).parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| anyhow!("Failed to create directories for {}: {}", output_path, e))?;
+        }
+        std::fs::write(&output_path, &content)
+            .map_err(|e| anyhow!("Failed to write result to file {}: {}", output_path, e))?;
+        eprintln!("\nResults written to: {}", output_path);
+    }
+
+    // Print to stdout
+    println!("\n{}", content);
 
     Ok(())
 }
