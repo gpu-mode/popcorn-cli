@@ -101,6 +101,7 @@ pub async fn submit_solution<P: AsRef<Path>>(
     leaderboard: &str,
     gpu: &str,
     submission_mode: &str,
+    on_log: Option<Box<dyn Fn(String) + Send + Sync>>,
 ) -> Result<String> {
     let base_url =
         env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
@@ -172,11 +173,62 @@ pub async fn submit_solution<P: AsRef<Path>>(
 
                 if let (Some(event), Some(data)) = (event_type, data_json) {
                     match event {
-                        "status" => (),
+                        "status" => {
+                            if let Some(ref cb) = on_log {
+                                // Try to parse as JSON and extract "message" or just return raw data
+                                if let Ok(val) = serde_json::from_str::<Value>(data) {
+                                    if let Some(msg) = val.get("message").and_then(|m| m.as_str()) {
+                                        cb(msg.to_string());
+                                    } else {
+                                        cb(data.to_string());
+                                    }
+                                } else {
+                                    cb(data.to_string());
+                                }
+                            }
+                        }
                         "result" => {
                             let result_val: Value = serde_json::from_str(data)?;
-                            let reports = result_val.get("reports").unwrap();
-                            return Ok(reports.to_string());
+                            
+                            if let Some(ref cb) = on_log {
+                                // Handle "results" array
+                                if let Some(results_array) = result_val.get("results").and_then(|v| v.as_array()) {
+                                    for (i, result_item) in results_array.iter().enumerate() {
+                                        let mode_key = submission_mode.to_lowercase();
+                                        
+                                        if let Some(run_obj) = result_item.get("runs")
+                                            .and_then(|r| r.get(&mode_key))
+                                            .and_then(|t| t.get("run")) 
+                                        {
+                                            if let Some(stdout) = run_obj.get("stdout").and_then(|s| s.as_str()) {
+                                                if !stdout.is_empty() {
+                                                    cb(format!("STDOUT (Run {}):\n{}", i + 1, stdout));
+                                                }
+                                            }
+                                            // Also check stderr
+                                            if let Some(stderr) = run_obj.get("stderr").and_then(|s| s.as_str()) {
+                                                if !stderr.is_empty() {
+                                                    cb(format!("STDERR (Run {}):\n{}", i + 1, stderr));
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // Fallback for single object or different structure
+                                    if let Some(stdout) = result_val.get("stdout").and_then(|s| s.as_str()) {
+                                        if !stdout.is_empty() {
+                                            cb(format!("STDOUT:\n{}", stdout));
+                                        }
+                                    }
+                                }
+                            }
+
+                            if let Some(reports) = result_val.get("reports") {
+                                return Ok(reports.to_string());
+                            } else {
+                                // If no reports, return the whole result as a string
+                                return Ok(serde_json::to_string_pretty(&result_val)?);
+                            }
                         }
                         "error" => {
                             let error_val: Value = serde_json::from_str(data)?;
@@ -198,11 +250,11 @@ pub async fn submit_solution<P: AsRef<Path>>(
                             return Err(anyhow!(error_msg));
                         }
                         _ => {
-                            stderr
-                                .write_all(
-                                    format!("Ignoring unknown SSE event: {}\n", event).as_bytes(),
-                                )
-                                .await?;
+                            let msg = format!("Ignoring unknown SSE event: {}\n", event);
+                            if let Some(ref cb) = on_log {
+                                cb(msg.clone());
+                            }
+                            stderr.write_all(msg.as_bytes()).await?;
                             stderr.flush().await?;
                         }
                     }
