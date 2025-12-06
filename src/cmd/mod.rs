@@ -59,6 +59,10 @@ pub struct Cli {
     // Optional: Specify output file
     #[arg(short, long)]
     pub output: Option<String>,
+
+    /// Skip the TUI and print results directly to stdout
+    #[arg(long)]
+    pub no_tui: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -96,6 +100,10 @@ enum Commands {
         // Optional: Specify output file
         #[arg(short, long)]
         output: Option<String>,
+
+        /// Skip the TUI and print results directly to stdout
+        #[arg(long)]
+        no_tui: bool,
     },
 }
 
@@ -121,6 +129,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
             leaderboard,
             mode,
             output,
+            no_tui,
         }) => {
             let config = load_config()?;
             let cli_id = config.cli_id.ok_or_else(|| {
@@ -133,15 +142,28 @@ pub async fn execute(cli: Cli) -> Result<()> {
 
             // Use filepath from Submit command first, fallback to top-level filepath
             let final_filepath = filepath.or(cli.filepath);
-            submit::run_submit_tui(
-                final_filepath, // Resolved filepath
-                gpu,            // From Submit command
-                leaderboard,    // From Submit command
-                mode,           // From Submit command
-                cli_id,
-                output, // From Submit command
-            )
-            .await
+            
+            if no_tui {
+                submit::run_submit_plain(
+                    final_filepath, // Resolved filepath
+                    gpu,            // From Submit command
+                    leaderboard,    // From Submit command
+                    mode,           // From Submit command
+                    cli_id,
+                    output, // From Submit command
+                )
+                .await
+            } else {
+                submit::run_submit_tui(
+                    final_filepath, // Resolved filepath
+                    gpu,            // From Submit command
+                    leaderboard,    // From Submit command
+                    mode,           // From Submit command
+                    cli_id,
+                    output, // From Submit command
+                )
+                .await
+            }
         }
         None => {
             // Check if any of the submission-related flags were used at the top level
