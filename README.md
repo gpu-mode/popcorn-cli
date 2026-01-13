@@ -5,6 +5,10 @@ A command-line interface tool for submitting solutions to the [Popcorn Discord B
 
 Tested on linux and mac but should just work on Windows as well.
 
+## New: Nsight Compute Profiling
+
+Profile your kernels with `--mode profile` and get detailed metrics. Currently only available for the NVFP4 Blackwell competition (Modal, which we use for other competitions, does not support NCU). See [docs/profiling.md](docs/profiling.md) for details.
+
 ## Installation
 
 ### Option 1: Using pre-built binaries (Recommended)

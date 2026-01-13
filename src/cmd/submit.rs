@@ -67,7 +67,7 @@ impl App {
             ),
             SubmissionModeItem::new(
                 "Profile".to_string(),
-                "Profile is currently supported only via Discord. We'll add this feature to the CLI soon.".to_string(),
+                "Profile the solution using Nsight Compute (NVIDIA) or rocPROF (AMD). Downloads profiling data to current directory.".to_string(),
                 "profile".to_string(),
             ),
         ];
