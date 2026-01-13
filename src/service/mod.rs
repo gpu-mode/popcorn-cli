@@ -1,4 +1,6 @@
 use anyhow::{anyhow, Result};
+use base64::Engine;
+use chrono::Utc;
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::multipart::{Form, Part};
 use reqwest::Client;
@@ -189,26 +191,40 @@ pub async fn submit_solution<P: AsRef<Path>>(
                         }
                         "result" => {
                             let result_val: Value = serde_json::from_str(data)?;
-                            
+
                             if let Some(ref cb) = on_log {
                                 // Handle "results" array
                                 if let Some(results_array) = result_val.get("results").and_then(|v| v.as_array()) {
-                                    for (i, result_item) in results_array.iter().enumerate() {
-                                        let mode_key = submission_mode.to_lowercase();
-                                        
-                                        if let Some(run_obj) = result_item.get("runs")
-                                            .and_then(|r| r.get(&mode_key))
-                                            .and_then(|t| t.get("run")) 
-                                        {
-                                            if let Some(stdout) = run_obj.get("stdout").and_then(|s| s.as_str()) {
-                                                if !stdout.is_empty() {
-                                                    cb(format!("STDOUT (Run {}):\n{}", i + 1, stdout));
+                                    let mode_key = submission_mode.to_lowercase();
+
+                                    // Special handling for profile mode
+                                    if mode_key == "profile" {
+                                        for (i, result_item) in results_array.iter().enumerate() {
+                                            if let Some(runs) = result_item.get("runs").and_then(|r| r.as_object()) {
+                                                for (key, run_data) in runs.iter() {
+                                                    if key.starts_with("profile") {
+                                                        handle_profile_result(cb, run_data, i);
+                                                    }
                                                 }
                                             }
-                                            // Also check stderr
-                                            if let Some(stderr) = run_obj.get("stderr").and_then(|s| s.as_str()) {
-                                                if !stderr.is_empty() {
-                                                    cb(format!("STDERR (Run {}):\n{}", i + 1, stderr));
+                                        }
+                                    } else {
+                                        // Existing handling for non-profile modes
+                                        for (i, result_item) in results_array.iter().enumerate() {
+                                            if let Some(run_obj) = result_item.get("runs")
+                                                .and_then(|r| r.get(&mode_key))
+                                                .and_then(|t| t.get("run"))
+                                            {
+                                                if let Some(stdout) = run_obj.get("stdout").and_then(|s| s.as_str()) {
+                                                    if !stdout.is_empty() {
+                                                        cb(format!("STDOUT (Run {}):\n{}", i + 1, stdout));
+                                                    }
+                                                }
+                                                // Also check stderr
+                                                if let Some(stderr) = run_obj.get("stderr").and_then(|s| s.as_str()) {
+                                                    if !stderr.is_empty() {
+                                                        cb(format!("STDERR (Run {}):\n{}", i + 1, stderr));
+                                                    }
                                                 }
                                             }
                                         }
@@ -271,5 +287,93 @@ pub async fn submit_solution<P: AsRef<Path>>(
             None => return Err(anyhow!("Invalid non-streaming response structure")),
         };
         Ok(pretty_result)
+    }
+}
+
+/// Handle profile mode results by decoding and displaying profile data,
+/// and saving trace files to the current directory.
+fn handle_profile_result(
+    cb: &Box<dyn Fn(String) + Send + Sync>,
+    run_data: &Value,
+    run_idx: usize,
+) {
+    // 1. Get profiler type and display it
+    if let Some(profile) = run_data.get("profile") {
+        let profiler = profile
+            .get("profiler")
+            .and_then(|p| p.as_str())
+            .unwrap_or("Unknown");
+        cb(format!("\n=== Profiler: {} ===", profiler));
+
+        // 2. Decode and display profile report from run.result
+        if let Some(run) = run_data.get("run") {
+            // Display stdout/stderr if present
+            if let Some(stdout) = run.get("stdout").and_then(|s| s.as_str()) {
+                if !stdout.is_empty() {
+                    cb(format!("STDOUT:\n{}", stdout));
+                }
+            }
+            if let Some(stderr) = run.get("stderr").and_then(|s| s.as_str()) {
+                if !stderr.is_empty() {
+                    cb(format!("STDERR:\n{}", stderr));
+                }
+            }
+
+            // Extract and decode profile report from result
+            if let Some(result) = run.get("result").and_then(|r| r.as_object()) {
+                let bench_count = result
+                    .get("benchmark-count")
+                    .and_then(|c| c.as_i64())
+                    .unwrap_or(0);
+
+                for i in 0..bench_count {
+                    // Get benchmark spec
+                    let spec_key = format!("benchmark.{}.spec", i);
+                    let spec = result
+                        .get(&spec_key)
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("unknown");
+                    cb(format!("\nBenchmark: {}", spec));
+
+                    // Decode and display the profile report
+                    let report_key = format!("benchmark.{}.report", i);
+                    if let Some(encoded_report) = result.get(&report_key).and_then(|r| r.as_str()) {
+                        match base64::engine::general_purpose::STANDARD.decode(encoded_report) {
+                            Ok(decoded) => {
+                                if let Ok(report_text) = String::from_utf8(decoded) {
+                                    cb(format!("\n{}", report_text));
+                                }
+                            }
+                            Err(e) => cb(format!("Failed to decode profile report: {}", e)),
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Save trace file with unique timestamp
+        if let Some(trace_b64) = profile.get("trace").and_then(|t| t.as_str()) {
+            if !trace_b64.is_empty() {
+                match base64::engine::general_purpose::STANDARD.decode(trace_b64) {
+                    Ok(trace_data) => {
+                        // Generate unique filename with timestamp and run index
+                        let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
+                        let filename = format!("profile_{}_run{}.zip", timestamp, run_idx);
+                        match std::fs::write(&filename, &trace_data) {
+                            Ok(_) => cb(format!("\nSaved profile trace to: {}", filename)),
+                            Err(e) => cb(format!("Failed to save trace file: {}", e)),
+                        }
+                    }
+                    Err(e) => cb(format!("Failed to decode trace data: {}", e)),
+                }
+            }
+        }
+
+        // 4. Show download URL if available
+        if let Some(url) = profile.get("download_url").and_then(|u| u.as_str()) {
+            if !url.is_empty() {
+                cb(format!("Download full profile: {}", url));
+            }
+        }
     }
 }
