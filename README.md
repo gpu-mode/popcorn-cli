@@ -1,6 +1,6 @@
 # Popcorn CLI
 
-A command-line interface tool for submitting solutions to the [Popcorn Discord Bot](https://github.com/gpu-mode/discord-cluster-manager)
+A command-line interface tool for submitting solutions to the [gpumode.com](https://gpumode.com)
 <img width="1034" alt="Screenshot 2025-06-10 at 11 17 45 AM" src="https://github.com/user-attachments/assets/66414f12-a984-4a3d-b035-d31f8695a54d" />
 
 Tested on linux and mac but should just work on Windows as well.
@@ -40,9 +40,22 @@ wget https://raw.githubusercontent.com/gpu-mode/reference-kernels/refs/heads/mai
 popcorn-cli submit --gpu A100 --leaderboard grayscale --mode leaderboard submission.py
 ```
 
-## Discover new problems
+## Reference Kernels
 
-The CLI supports (almost) everything Discord does, so you can also discovery which leaderboards are available. To make discovery more pleasant we also offer a TUI experience.
+All reference kernels are available at [gpu-mode/reference-kernels](https://github.com/gpu-mode/reference-kernels). Each problem directory contains:
+- `reference.py` - The reference implementation to beat
+- `submission.py` - A sample submission you can use as a starting point
+- `task.yml` - Input shapes and problem configuration
+
+Our entire evaluation infrastructure is open source and you can learn more [here](https://github.com/gpu-mode/kernelbot). Development happens on the [KernelBot discord](https://discord.gg/FjYsdHDv7J)
+
+## Stay Updated
+
+Interested in new kernel competitions? Join [discord.gg/gpumode](https://discord.gg/gpumode) and check out the **#announcements** channel to be notified when new challenges drop.
+
+## Discover Problems
+
+The CLI supports (almost) everything Discord does, so you can also discover which leaderboards are available. To make discovery more pleasant we also offer a TUI experience.
 
 ```bash
 popcorn-cli submit <submission-file>
