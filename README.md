@@ -40,9 +40,20 @@ wget https://raw.githubusercontent.com/gpu-mode/reference-kernels/refs/heads/mai
 popcorn-cli submit --gpu A100 --leaderboard grayscale --mode leaderboard submission.py
 ```
 
-## Discover new problems
+## Reference Kernels
 
-The CLI supports (almost) everything Discord does, so you can also discovery which leaderboards are available. To make discovery more pleasant we also offer a TUI experience.
+All reference kernels are available at [gpu-mode/reference-kernels](https://github.com/gpu-mode/reference-kernels). Each problem directory contains:
+- `reference.py` - The reference implementation to beat
+- `submission.py` - A sample submission you can use as a starting point
+- `task.yml` - Input shapes and problem configuration
+
+## Stay Updated
+
+Interested in new kernel competitions? Join [discord.gg/gpumode](https://discord.gg/gpumode) and check out the **#announcements** channel to be notified when new challenges drop.
+
+## Discover Problems
+
+The CLI supports (almost) everything Discord does, so you can also discover which leaderboards are available. To make discovery more pleasant we also offer a TUI experience.
 
 ```bash
 popcorn-cli submit <submission-file>
