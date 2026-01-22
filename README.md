@@ -11,16 +11,42 @@ Profile your kernels with `--mode profile` and get detailed metrics. Currently o
 
 ## Installation
 
-### Option 1: Using pre-built binaries (Recommended)
+### Option 1: One-Line Install (Recommended)
 
-1. Download the latest release for your platform from the releases page
+**Linux/macOS/Unix:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+powershell -ExecutionPolicy Bypass -Command "iwr -UseBasicParsing https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/install.ps1 | iex"
+```
+
+After installation, restart your terminal (or run `source ~/.bashrc` / `source ~/.zshrc`).
+
+### Option 2: Manual Installation
+
+1. Download the binary for your OS from [releases](https://github.com/gpu-mode/popcorn-cli/releases/latest)
 2. Extract the archive
-3. Move the binary to a location in your PATH
+3. Move the binary to a directory in your PATH
+4. Make it executable (Linux/macOS): `chmod +x popcorn-cli`
 
-### Option 2: Building from source
+### Option 3: Building from source
 
 1. Download rust `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 2. `cd popcorn-cli && ./build.sh`
+
+### Troubleshooting
+
+**Command not found after installation:**
+- Restart your terminal
+- Check if the install directory is in your PATH:
+  - Linux/macOS: `echo $PATH`
+  - Windows: `echo $env:PATH`
+- Check if POPCORN_API_URL is set to https://discord-cluster-manager-1f6c4782e60a.herokuapp.com
+  - Linux/macOS: `echo $POPCORN_API_URL`
+  - Windows: `echo $env:POPCORN_API_URL`
 
 ## Authentication
 
