@@ -66,6 +66,12 @@ wget https://raw.githubusercontent.com/gpu-mode/reference-kernels/refs/heads/mai
 popcorn-cli submit --gpu A100 --leaderboard grayscale --mode leaderboard submission.py
 ```
 
+## Submission Format
+
+Submissions are always a single Python file. If you want to submit native CUDA code, you can use PyTorch's `load_inline` feature (which uses nvcc) or the more experimental [`compile_kernel` API](https://x.com/gaunernst/status/2015242181049745607) for fast compilation. See [this example](https://github.com/gpu-mode/reference-kernels/blob/main/problems/pmpp_v2/vectoradd_py/solutions/correct/submission_cuda_inline.py) for reference.
+
+For syntax highlighting of both C++ and Python in your IDE, you can use the [PyTorch Load Inline Highlighter](https://marketplace.visualstudio.com/items?itemName=msaroufim.pytorch-load-inline-highlighter) VS Code extension.
+
 ## Reference Kernels
 
 All reference kernels are available at [gpu-mode/reference-kernels](https://github.com/gpu-mode/reference-kernels). Each problem directory contains:
