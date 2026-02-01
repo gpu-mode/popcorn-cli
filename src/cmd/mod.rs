@@ -1,8 +1,6 @@
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
-use dirs;
 use serde::{Deserialize, Serialize};
-use serde_yaml;
 use std::fs::File;
 use std::path::PathBuf;
 
@@ -173,9 +171,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 .await
             }
         }
-        Some(Commands::Admin { action }) => {
-            admin::handle_admin(action).await
-        }
+        Some(Commands::Admin { action }) => admin::handle_admin(action).await,
         None => {
             // Check if any of the submission-related flags were used at the top level
             if cli.gpu.is_some() || cli.leaderboard.is_some() || cli.mode.is_some() {
@@ -207,7 +203,9 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 )
                 .await
             } else {
-                Err(anyhow!("No command or submission file specified. Use --help for usage."))
+                Err(anyhow!(
+                    "No command or submission file specified. Use --help for usage."
+                ))
             }
         }
     }
