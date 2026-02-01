@@ -26,6 +26,52 @@ All PRs must pass:
 - `cargo test` - All tests pass
 - Builds on Linux, macOS, and Windows
 
+### Testing
+
+#### Unit Tests
+
+Tests are in the same file as the code (Rust convention):
+- `src/service/mod.rs` - API client tests
+- `src/utils/mod.rs` - Utility function tests
+
+Run all tests:
+```bash
+cargo test
+```
+
+Run specific tests:
+```bash
+cargo test test_name
+```
+
+#### Test Requirements
+
+When adding new functionality:
+
+1. **Service functions** (`src/service/mod.rs`):
+   - Add tests in the `#[cfg(test)] mod tests` block
+   - Test error handling, response parsing
+
+2. **Command handlers** (`src/cmd/`):
+   - Integration testing via E2E regression tests
+
+#### E2E Regression Testing
+
+Use a local instance of kernelbot to test CLI functionality end-to-end:
+
+```bash
+# Start local kernelbot server (see kernelbot repo)
+cd ../kernelbot
+docker compose up -d
+uv run uvicorn src.kernelbot.api.main:app --reload --port 8000
+
+# Test CLI against local instance
+export POPCORN_API_URL=http://localhost:8000
+cargo run -- submissions list --leaderboard test-leaderboard
+cargo run -- submissions show 123
+cargo run -- submissions delete 123 --force
+```
+
 ## Architecture Overview
 
 Popcorn CLI is a command-line tool for submitting GPU kernel optimization solutions to [gpumode.com](https://gpumode.com) competitions.
@@ -37,7 +83,9 @@ src/
 ├── main.rs              # Entry point, sets POPCORN_API_URL
 ├── cmd/                 # Command handling
 │   ├── mod.rs           # CLI argument parsing (clap), config loading
+│   ├── admin.rs         # Admin commands (requires POPCORN_ADMIN_TOKEN)
 │   ├── auth.rs          # OAuth authentication (Discord/GitHub)
+│   ├── submissions.rs   # User submission management (list, show, delete)
 │   └── submit.rs        # Submission logic, TUI app state machine
 ├── service/
 │   └── mod.rs           # HTTP client, API calls, SSE streaming
@@ -49,6 +97,24 @@ src/
     ├── loading_page.rs  # TUI loading screen with progress bar
     └── result_page.rs   # TUI results display with scrolling
 ```
+
+### Before Adding New Features
+
+**Important:** Before implementing new functionality, check for existing code in both repos:
+
+1. **Check discord-cluster-manager** for existing Discord commands and database methods:
+   - `src/kernelbot/cogs/` - Discord bot commands
+   - `src/libkernelbot/leaderboard_db.py` - Database methods
+   - `src/kernelbot/api/main.py` - Existing API endpoints
+
+2. **Check popcorn-cli** for existing service functions and commands:
+   - `src/service/mod.rs` - API client functions
+   - `src/cmd/` - CLI command handlers
+
+3. **Reuse existing functionality** where possible:
+   - Database methods (e.g., `get_submission_by_id`, `delete_submission`)
+   - API response handling patterns
+   - Authentication validation (`validate_user_header`, `validate_cli_header`)
 
 ### Core Flow
 
