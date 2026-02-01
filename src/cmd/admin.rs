@@ -153,7 +153,10 @@ pub async fn handle_admin(action: AdminAction) -> Result<()> {
                 if !skipped.is_empty() {
                     println!("\nSkipped {} leaderboard(s):", skipped.len());
                     for item in skipped {
-                        let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
+                        let name = item
+                            .get("name")
+                            .and_then(|n| n.as_str())
+                            .unwrap_or("unknown");
                         let reason = item
                             .get("reason")
                             .and_then(|r| r.as_str())
@@ -166,8 +169,14 @@ pub async fn handle_admin(action: AdminAction) -> Result<()> {
                 if !errors.is_empty() {
                     println!("\nErrors ({}):", errors.len());
                     for item in errors {
-                        let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
-                        let error = item.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
+                        let name = item
+                            .get("name")
+                            .and_then(|n| n.as_str())
+                            .unwrap_or("unknown");
+                        let error = item
+                            .get("error")
+                            .and_then(|e| e.as_str())
+                            .unwrap_or("unknown");
                         println!("  ! {}: {}", name, error);
                     }
                 }
