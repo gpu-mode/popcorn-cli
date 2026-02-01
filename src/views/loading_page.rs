@@ -22,12 +22,12 @@ pub struct LoadingPage {
 fn get_gradient_color(progress: f64) -> Color {
     // Convert progress from 0-100 to 0-1
     let t = progress / 100.0;
-    
+
     // Start with red (255, 0, 0) and end with green (0, 255, 0)
     let r = ((1.0 - t) * 255.0) as u8;
     let g = (t * 255.0) as u8;
     let b = 0;
-    
+
     Color::Rgb(r, g, b)
 }
 
@@ -63,11 +63,11 @@ fn get_footer_text(state: &LoadingPageState) -> String {
     }
 
     if percentage > 75.0 {
-        return "Almost there!".to_string();
+        "Almost there!".to_string()
     } else if percentage > 35.0 {
-        return "Crunching numbers...".to_string();
+        "Crunching numbers...".to_string()
     } else {
-        return "This is taking a while, huh?".to_string();
+        "This is taking a while, huh?".to_string()
     }
 }
 

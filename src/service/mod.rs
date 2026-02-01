@@ -54,7 +54,7 @@ pub async fn fetch_leaderboards(client: &Client) -> Result<Vec<LeaderboardItem>>
 
     let mut leaderboard_items = Vec::new();
     for lb in leaderboards {
-        let task = lb["task"]
+        let _task = lb["task"]
             .as_object()
             .ok_or_else(|| anyhow!("Invalid JSON structure"))?;
         let name = lb["name"]
@@ -91,7 +91,7 @@ pub async fn fetch_gpus(client: &Client, leaderboard: &str) -> Result<Vec<GpuIte
 
     let gpus: Vec<String> = resp.json().await?;
 
-    let gpu_items = gpus.into_iter().map(|gpu| GpuItem::new(gpu)).collect();
+    let gpu_items = gpus.into_iter().map(GpuItem::new).collect();
 
     Ok(gpu_items)
 }
@@ -151,7 +151,7 @@ pub async fn submit_solution<P: AsRef<Path>>(
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
-        .map_or(false, |s| s.starts_with("text/event-stream"))
+        .is_some_and(|s| s.starts_with("text/event-stream"))
     {
         let mut resp = resp;
         let mut buffer = String::new();
@@ -166,10 +166,10 @@ pub async fn submit_solution<P: AsRef<Path>>(
                 let mut data_json = None;
 
                 for line in message_str.lines() {
-                    if line.starts_with("event:") {
-                        event_type = Some(line["event:".len()..].trim());
-                    } else if line.starts_with("data:") {
-                        data_json = Some(line["data:".len()..].trim());
+                    if let Some(stripped) = line.strip_prefix("event:") {
+                        event_type = Some(stripped.trim());
+                    } else if let Some(stripped) = line.strip_prefix("data:") {
+                        data_json = Some(stripped.trim());
                     }
                 }
 
@@ -194,13 +194,17 @@ pub async fn submit_solution<P: AsRef<Path>>(
 
                             if let Some(ref cb) = on_log {
                                 // Handle "results" array
-                                if let Some(results_array) = result_val.get("results").and_then(|v| v.as_array()) {
+                                if let Some(results_array) =
+                                    result_val.get("results").and_then(|v| v.as_array())
+                                {
                                     let mode_key = submission_mode.to_lowercase();
 
                                     // Special handling for profile mode
                                     if mode_key == "profile" {
                                         for (i, result_item) in results_array.iter().enumerate() {
-                                            if let Some(runs) = result_item.get("runs").and_then(|r| r.as_object()) {
+                                            if let Some(runs) =
+                                                result_item.get("runs").and_then(|r| r.as_object())
+                                            {
                                                 for (key, run_data) in runs.iter() {
                                                     if key.starts_with("profile") {
                                                         handle_profile_result(cb, run_data, i);
@@ -211,19 +215,32 @@ pub async fn submit_solution<P: AsRef<Path>>(
                                     } else {
                                         // Existing handling for non-profile modes
                                         for (i, result_item) in results_array.iter().enumerate() {
-                                            if let Some(run_obj) = result_item.get("runs")
+                                            if let Some(run_obj) = result_item
+                                                .get("runs")
                                                 .and_then(|r| r.get(&mode_key))
                                                 .and_then(|t| t.get("run"))
                                             {
-                                                if let Some(stdout) = run_obj.get("stdout").and_then(|s| s.as_str()) {
+                                                if let Some(stdout) =
+                                                    run_obj.get("stdout").and_then(|s| s.as_str())
+                                                {
                                                     if !stdout.is_empty() {
-                                                        cb(format!("STDOUT (Run {}):\n{}", i + 1, stdout));
+                                                        cb(format!(
+                                                            "STDOUT (Run {}):\n{}",
+                                                            i + 1,
+                                                            stdout
+                                                        ));
                                                     }
                                                 }
                                                 // Also check stderr
-                                                if let Some(stderr) = run_obj.get("stderr").and_then(|s| s.as_str()) {
+                                                if let Some(stderr) =
+                                                    run_obj.get("stderr").and_then(|s| s.as_str())
+                                                {
                                                     if !stderr.is_empty() {
-                                                        cb(format!("STDERR (Run {}):\n{}", i + 1, stderr));
+                                                        cb(format!(
+                                                            "STDERR (Run {}):\n{}",
+                                                            i + 1,
+                                                            stderr
+                                                        ));
                                                     }
                                                 }
                                             }
@@ -231,7 +248,9 @@ pub async fn submit_solution<P: AsRef<Path>>(
                                     }
                                 } else {
                                     // Fallback for single object or different structure
-                                    if let Some(stdout) = result_val.get("stdout").and_then(|s| s.as_str()) {
+                                    if let Some(stdout) =
+                                        result_val.get("stdout").and_then(|s| s.as_str())
+                                    {
                                         if !stdout.is_empty() {
                                             cb(format!("STDOUT:\n{}", stdout));
                                         }
@@ -292,11 +311,7 @@ pub async fn submit_solution<P: AsRef<Path>>(
 
 /// Handle profile mode results by decoding and displaying profile data,
 /// and saving trace files to the current directory.
-fn handle_profile_result(
-    cb: &Box<dyn Fn(String) + Send + Sync>,
-    run_data: &Value,
-    run_idx: usize,
-) {
+fn handle_profile_result(cb: &(dyn Fn(String) + Send + Sync), run_data: &Value, run_idx: usize) {
     // 1. Get profiler type and display it
     if let Some(profile) = run_data.get("profile") {
         let profiler = profile
@@ -374,6 +389,104 @@ fn handle_profile_result(
             if !url.is_empty() {
                 cb(format!("Download full profile: {}", url));
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_client_without_cli_id() {
+        let client = create_client(None);
+
+        assert!(client.is_ok());
+    }
+
+    #[test]
+    fn test_create_client_with_valid_cli_id() {
+        let client = create_client(Some("valid-cli-id-123".to_string()));
+
+        assert!(client.is_ok());
+    }
+
+    #[test]
+    fn test_create_client_with_empty_cli_id() {
+        let client = create_client(Some("".to_string()));
+
+        assert!(client.is_ok());
+    }
+
+    #[test]
+    fn test_create_client_with_invalid_header_chars() {
+        // Headers cannot contain newlines or certain control characters
+        let client = create_client(Some("invalid\nheader".to_string()));
+
+        assert!(client.is_err());
+        let err_msg = client.unwrap_err().to_string();
+        assert!(err_msg.contains("Invalid cli_id format"));
+    }
+
+    #[tokio::test]
+    async fn test_fetch_leaderboards_missing_env_var() {
+        // Temporarily unset the env var if set
+        let original = std::env::var("POPCORN_API_URL").ok();
+        std::env::remove_var("POPCORN_API_URL");
+
+        let client = create_client(None).unwrap();
+        let result = fetch_leaderboards(&client).await;
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("POPCORN_API_URL"));
+
+        // Restore original value if it existed
+        if let Some(val) = original {
+            std::env::set_var("POPCORN_API_URL", val);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_fetch_gpus_missing_env_var() {
+        let original = std::env::var("POPCORN_API_URL").ok();
+        std::env::remove_var("POPCORN_API_URL");
+
+        let client = create_client(None).unwrap();
+        let result = fetch_gpus(&client, "test-leaderboard").await;
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("POPCORN_API_URL"));
+
+        if let Some(val) = original {
+            std::env::set_var("POPCORN_API_URL", val);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_submit_solution_missing_env_var() {
+        let original = std::env::var("POPCORN_API_URL").ok();
+        std::env::remove_var("POPCORN_API_URL");
+
+        let client = create_client(None).unwrap();
+        let result = submit_solution(
+            &client,
+            "test.py",
+            "print('hello')",
+            "test-leaderboard",
+            "H100",
+            "test",
+            None,
+        )
+        .await;
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("POPCORN_API_URL"));
+
+        if let Some(val) = original {
+            std::env::set_var("POPCORN_API_URL", val);
         }
     }
 }

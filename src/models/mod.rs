@@ -1,5 +1,3 @@
-use serde::{Deserialize, Serialize};
-
 #[derive(Clone, Debug)]
 pub struct LeaderboardItem {
     pub title_text: String,
@@ -51,6 +49,3 @@ pub enum AppState {
     SubmissionModeSelection,
     WaitingForResult,
 }
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SubmissionResultMsg(pub String);
