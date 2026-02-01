@@ -26,6 +26,52 @@ All PRs must pass:
 - `cargo test` - All tests pass
 - Builds on Linux, macOS, and Windows
 
+### Testing
+
+#### Unit Tests
+
+Tests are in the same file as the code (Rust convention):
+- `src/service/mod.rs` - API client tests
+- `src/utils/mod.rs` - Utility function tests
+
+Run all tests:
+```bash
+cargo test
+```
+
+Run specific tests:
+```bash
+cargo test test_name
+```
+
+#### Test Requirements
+
+When adding new functionality:
+
+1. **Service functions** (`src/service/mod.rs`):
+   - Add tests in the `#[cfg(test)] mod tests` block
+   - Test error handling, response parsing
+
+2. **Command handlers** (`src/cmd/`):
+   - Integration testing via E2E regression tests
+
+#### E2E Regression Testing
+
+Use a local instance of kernelbot to test CLI functionality end-to-end:
+
+```bash
+# Start local kernelbot server (see kernelbot repo)
+cd ../kernelbot
+docker compose up -d
+uv run uvicorn src.kernelbot.api.main:app --reload --port 8000
+
+# Test CLI against local instance
+export POPCORN_API_URL=http://localhost:8000
+cargo run -- submissions list --leaderboard test-leaderboard
+cargo run -- submissions show 123
+cargo run -- submissions delete 123 --force
+```
+
 ## Architecture Overview
 
 Popcorn CLI is a command-line tool for submitting GPU kernel optimization solutions to [gpumode.com](https://gpumode.com) competitions.

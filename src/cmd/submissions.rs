@@ -135,8 +135,12 @@ pub async fn delete_submission(cli_id: String, submission_id: i64, force: bool) 
     }
 
     // Delete the submission
-    service::delete_user_submission(&client, submission_id).await?;
-    println!("Submission {} deleted successfully.", submission_id);
+    let result = service::delete_user_submission(&client, submission_id).await?;
+    if result.get("status").and_then(|s| s.as_str()) == Some("ok") {
+        println!("Submission {} deleted successfully.", submission_id);
+    } else {
+        println!("Submission deleted.");
+    }
 
     Ok(())
 }
