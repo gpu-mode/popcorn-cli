@@ -37,7 +37,9 @@ src/
 ├── main.rs              # Entry point, sets POPCORN_API_URL
 ├── cmd/                 # Command handling
 │   ├── mod.rs           # CLI argument parsing (clap), config loading
+│   ├── admin.rs         # Admin commands (requires POPCORN_ADMIN_TOKEN)
 │   ├── auth.rs          # OAuth authentication (Discord/GitHub)
+│   ├── submissions.rs   # User submission management (list, show, delete)
 │   └── submit.rs        # Submission logic, TUI app state machine
 ├── service/
 │   └── mod.rs           # HTTP client, API calls, SSE streaming
@@ -49,6 +51,24 @@ src/
     ├── loading_page.rs  # TUI loading screen with progress bar
     └── result_page.rs   # TUI results display with scrolling
 ```
+
+### Before Adding New Features
+
+**Important:** Before implementing new functionality, check for existing code in both repos:
+
+1. **Check discord-cluster-manager** for existing Discord commands and database methods:
+   - `src/kernelbot/cogs/` - Discord bot commands
+   - `src/libkernelbot/leaderboard_db.py` - Database methods
+   - `src/kernelbot/api/main.py` - Existing API endpoints
+
+2. **Check popcorn-cli** for existing service functions and commands:
+   - `src/service/mod.rs` - API client functions
+   - `src/cmd/` - CLI command handlers
+
+3. **Reuse existing functionality** where possible:
+   - Database methods (e.g., `get_submission_by_id`, `delete_submission`)
+   - API response handling patterns
+   - Authentication validation (`validate_user_header`, `validate_cli_header`)
 
 ### Core Flow
 
