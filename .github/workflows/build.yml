@@ -63,7 +63,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      
+
+      - name: Update Cargo.toml version
+        shell: bash
+        run: |
+          VERSION="${{ needs.version.outputs.new_tag }}"
+          VERSION="${VERSION#v}"  # Strip 'v' prefix
+          sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          rm -f Cargo.toml.bak
+          echo "Updated Cargo.toml to version $VERSION"
+
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
