@@ -1,8 +1,6 @@
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
-use dirs;
 use serde::{Deserialize, Serialize};
-use serde_yaml;
 use std::fs::File;
 use std::path::PathBuf;
 
@@ -142,7 +140,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
 
             // Use filepath from Submit command first, fallback to top-level filepath
             let final_filepath = filepath.or(cli.filepath);
-            
+
             if no_tui {
                 submit::run_submit_plain(
                     final_filepath, // Resolved filepath
@@ -196,7 +194,9 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 )
                 .await
             } else {
-                Err(anyhow!("No command or submission file specified. Use --help for usage."))
+                Err(anyhow!(
+                    "No command or submission file specified. Use --help for usage."
+                ))
             }
         }
     }

@@ -33,9 +33,7 @@ impl ResultPage {
 
         let num_lines = result_text.lines().count();
 
-        state.vertical_scroll_state = state
-            .vertical_scroll_state
-            .content_length(num_lines);
+        state.vertical_scroll_state = state.vertical_scroll_state.content_length(num_lines);
 
         state.horizontal_scroll_state = state.horizontal_scroll_state.content_length(max_width);
         state.animation_frame = 0;
@@ -70,7 +68,7 @@ impl ResultPage {
             .result_text
             .clone()
             .block(right_block)
-            .scroll((state.vertical_scroll as u16, state.horizontal_scroll as u16));
+            .scroll((state.vertical_scroll, state.horizontal_scroll));
         result_text.render(right, buf);
     }
 

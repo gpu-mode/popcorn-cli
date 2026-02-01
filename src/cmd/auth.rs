@@ -1,11 +1,7 @@
 use anyhow::{anyhow, Result};
-use base64_url;
-use dirs;
 use serde::{Deserialize, Serialize};
-use serde_yaml;
 use std::fs::{File, OpenOptions};
 use std::path::PathBuf;
-use webbrowser;
 
 use crate::service; // Assuming service::create_client is needed
 
