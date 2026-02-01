@@ -171,9 +171,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 .await
             }
         }
-        Some(Commands::Admin { action }) => {
-            admin::handle_admin(action).await
-        }
+        Some(Commands::Admin { action }) => admin::handle_admin(action).await,
         None => {
             // Check if any of the submission-related flags were used at the top level
             if cli.gpu.is_some() || cli.leaderboard.is_some() || cli.mode.is_some() {

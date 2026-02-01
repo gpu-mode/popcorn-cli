@@ -57,7 +57,8 @@ pub fn create_admin_client(admin_token: &str) -> Result<Client> {
 
 /// Start accepting jobs on the server
 pub async fn admin_start(client: &Client) -> Result<Value> {
-    let base_url = env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+    let base_url =
+        env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
 
     let resp = client
         .post(format!("{}/admin/start", base_url))
@@ -71,7 +72,8 @@ pub async fn admin_start(client: &Client) -> Result<Value> {
 
 /// Stop accepting jobs on the server
 pub async fn admin_stop(client: &Client) -> Result<Value> {
-    let base_url = env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+    let base_url =
+        env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
 
     let resp = client
         .post(format!("{}/admin/stop", base_url))
@@ -85,7 +87,8 @@ pub async fn admin_stop(client: &Client) -> Result<Value> {
 
 /// Get server stats
 pub async fn admin_stats(client: &Client, last_day_only: bool) -> Result<Value> {
-    let base_url = env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+    let base_url =
+        env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
 
     let url = if last_day_only {
         format!("{}/admin/stats?last_day_only=true", base_url)
@@ -104,7 +107,8 @@ pub async fn admin_stats(client: &Client, last_day_only: bool) -> Result<Value> 
 
 /// Get a submission by ID
 pub async fn admin_get_submission(client: &Client, submission_id: i64) -> Result<Value> {
-    let base_url = env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+    let base_url =
+        env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
 
     let resp = client
         .get(format!("{}/admin/submissions/{}", base_url, submission_id))
@@ -117,7 +121,8 @@ pub async fn admin_get_submission(client: &Client, submission_id: i64) -> Result
 
 /// Delete a submission by ID
 pub async fn admin_delete_submission(client: &Client, submission_id: i64) -> Result<Value> {
-    let base_url = env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+    let base_url =
+        env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
 
     let resp = client
         .delete(format!("{}/admin/submissions/{}", base_url, submission_id))
@@ -129,11 +134,9 @@ pub async fn admin_delete_submission(client: &Client, submission_id: i64) -> Res
 }
 
 /// Create a dev leaderboard from a problem directory
-pub async fn admin_create_leaderboard(
-    client: &Client,
-    directory: &str,
-) -> Result<Value> {
-    let base_url = env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+pub async fn admin_create_leaderboard(client: &Client, directory: &str) -> Result<Value> {
+    let base_url =
+        env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
 
     let payload = serde_json::json!({
         "directory": directory
@@ -150,11 +153,19 @@ pub async fn admin_create_leaderboard(
 }
 
 /// Delete a leaderboard
-pub async fn admin_delete_leaderboard(client: &Client, leaderboard_name: &str, force: bool) -> Result<Value> {
-    let base_url = env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+pub async fn admin_delete_leaderboard(
+    client: &Client,
+    leaderboard_name: &str,
+    force: bool,
+) -> Result<Value> {
+    let base_url =
+        env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
 
     let url = if force {
-        format!("{}/admin/leaderboards/{}?force=true", base_url, leaderboard_name)
+        format!(
+            "{}/admin/leaderboards/{}?force=true",
+            base_url, leaderboard_name
+        )
     } else {
         format!("{}/admin/leaderboards/{}", base_url, leaderboard_name)
     };
@@ -176,7 +187,8 @@ pub async fn admin_update_problems(
     branch: &str,
     force: bool,
 ) -> Result<Value> {
-    let base_url = env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+    let base_url =
+        env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
 
     let mut payload = serde_json::json!({
         "repository": repository,
@@ -212,7 +224,9 @@ async fn handle_admin_response(resp: reqwest::Response) -> Result<Value> {
             detail.unwrap_or(error_text)
         ));
     }
-    resp.json().await.map_err(|e| anyhow!("Failed to parse response: {}", e))
+    resp.json()
+        .await
+        .map_err(|e| anyhow!("Failed to parse response: {}", e))
 }
 
 pub async fn fetch_leaderboards(client: &Client) -> Result<Vec<LeaderboardItem>> {
