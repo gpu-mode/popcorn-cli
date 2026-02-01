@@ -10,7 +10,7 @@ use std::path::Path;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 
-use crate::models::{GpuItem, LeaderboardItem};
+use crate::models::{GpuItem, LeaderboardItem, SubmissionDetails, SubmissionRun, UserSubmission};
 
 // Helper function to create a reusable reqwest client
 pub fn create_client(cli_id: Option<String>) -> Result<Client> {
@@ -289,6 +289,149 @@ pub async fn fetch_gpus(client: &Client, leaderboard: &str) -> Result<Vec<GpuIte
     let gpu_items = gpus.into_iter().map(GpuItem::new).collect();
 
     Ok(gpu_items)
+}
+
+/// Get the authenticated user's submissions
+pub async fn get_user_submissions(
+    client: &Client,
+    leaderboard: Option<&str>,
+    limit: Option<i32>,
+) -> Result<Vec<UserSubmission>> {
+    let base_url =
+        env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+
+    let mut url = format!("{}/user/submissions", base_url);
+    let mut params = Vec::new();
+    if let Some(lb) = leaderboard {
+        params.push(format!("leaderboard={}", lb));
+    }
+    if let Some(l) = limit {
+        params.push(format!("limit={}", l));
+    }
+    if !params.is_empty() {
+        url = format!("{}?{}", url, params.join("&"));
+    }
+
+    let resp = client
+        .get(&url)
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let error_text = resp.text().await?;
+        let detail = serde_json::from_str::<Value>(&error_text)
+            .ok()
+            .and_then(|v| v.get("detail").and_then(|d| d.as_str()).map(str::to_string));
+        return Err(anyhow!(
+            "Server returned status {}: {}",
+            status,
+            detail.unwrap_or(error_text)
+        ));
+    }
+
+    let submissions: Vec<Value> = resp.json().await?;
+
+    let mut result = Vec::new();
+    for sub in submissions {
+        result.push(UserSubmission {
+            id: sub["id"].as_i64().unwrap_or(0),
+            leaderboard_name: sub["leaderboard_name"].as_str().unwrap_or("").to_string(),
+            file_name: sub["file_name"].as_str().unwrap_or("").to_string(),
+            submission_time: sub["submission_time"].as_str().unwrap_or("").to_string(),
+            done: sub["done"].as_bool().unwrap_or(false),
+            gpu_type: sub["gpu_type"].as_str().map(str::to_string),
+            score: sub["score"].as_f64(),
+        });
+    }
+
+    Ok(result)
+}
+
+/// Get a specific submission by ID (with code)
+pub async fn get_user_submission(client: &Client, submission_id: i64) -> Result<SubmissionDetails> {
+    let base_url =
+        env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+
+    let resp = client
+        .get(format!("{}/user/submissions/{}", base_url, submission_id))
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let error_text = resp.text().await?;
+        let detail = serde_json::from_str::<Value>(&error_text)
+            .ok()
+            .and_then(|v| v.get("detail").and_then(|d| d.as_str()).map(str::to_string));
+        return Err(anyhow!(
+            "Server returned status {}: {}",
+            status,
+            detail.unwrap_or(error_text)
+        ));
+    }
+
+    let sub: Value = resp.json().await?;
+
+    let runs = sub["runs"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .map(|r| SubmissionRun {
+                    start_time: r["start_time"].as_str().map(str::to_string),
+                    end_time: r["end_time"].as_str().map(str::to_string),
+                    mode: r["mode"].as_str().unwrap_or("").to_string(),
+                    secret: r["secret"].as_bool().unwrap_or(false),
+                    runner: r["runner"].as_str().unwrap_or("").to_string(),
+                    score: r["score"].as_f64(),
+                    passed: r["passed"].as_bool().unwrap_or(false),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(SubmissionDetails {
+        id: sub["id"].as_i64().unwrap_or(0),
+        leaderboard_id: sub["leaderboard_id"].as_i64().unwrap_or(0),
+        leaderboard_name: sub["leaderboard_name"].as_str().unwrap_or("").to_string(),
+        file_name: sub["file_name"].as_str().unwrap_or("").to_string(),
+        user_id: sub["user_id"].as_str().unwrap_or("").to_string(),
+        submission_time: sub["submission_time"].as_str().unwrap_or("").to_string(),
+        done: sub["done"].as_bool().unwrap_or(false),
+        code: sub["code"].as_str().unwrap_or("").to_string(),
+        runs,
+    })
+}
+
+/// Delete a user's submission by ID
+pub async fn delete_user_submission(client: &Client, submission_id: i64) -> Result<Value> {
+    let base_url =
+        env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+
+    let resp = client
+        .delete(format!("{}/user/submissions/{}", base_url, submission_id))
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let error_text = resp.text().await?;
+        let detail = serde_json::from_str::<Value>(&error_text)
+            .ok()
+            .and_then(|v| v.get("detail").and_then(|d| d.as_str()).map(str::to_string));
+        return Err(anyhow!(
+            "Server returned status {}: {}",
+            status,
+            detail.unwrap_or(error_text)
+        ));
+    }
+
+    resp.json()
+        .await
+        .map_err(|e| anyhow!("Failed to parse response: {}", e))
 }
 
 pub async fn submit_solution<P: AsRef<Path>>(
