@@ -37,7 +37,7 @@ fn load_config() -> Result<Config> {
 }
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version = env!("CLI_VERSION"), about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
