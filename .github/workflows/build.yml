@@ -63,7 +63,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
@@ -83,6 +83,8 @@ jobs:
       
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
+        env:
+          CLI_VERSION: ${{ needs.version.outputs.new_tag }}
       
       - name: Prepare artifact
         shell: bash
