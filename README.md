@@ -89,7 +89,7 @@ Interested in new kernel competitions? Join [discord.gg/gpumode](https://discord
 
 ## Discover Problems
 
-The CLI supports (almost) everything Discord does, so you can also discover which leaderboards are available. To make discovery more pleasant we also offer a TUI experience.
+The CLI supports everything Discord does, so you can also discover which leaderboards are available. To make discovery more pleasant we also offer a TUI experience.
 
 ```bash
 popcorn-cli submit <submission-file>
