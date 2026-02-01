@@ -34,6 +34,187 @@ pub fn create_client(cli_id: Option<String>) -> Result<Client> {
         .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))
 }
 
+/// Create an HTTP client with admin token authentication
+pub fn create_admin_client(admin_token: &str) -> Result<Client> {
+    let mut default_headers = HeaderMap::new();
+
+    let auth_value = format!("Bearer {}", admin_token);
+    match HeaderValue::from_str(&auth_value) {
+        Ok(val) => {
+            default_headers.insert("Authorization", val);
+        }
+        Err(_) => {
+            return Err(anyhow!("Invalid admin token format for HTTP header"));
+        }
+    }
+
+    Client::builder()
+        .timeout(Duration::from_secs(60))
+        .default_headers(default_headers)
+        .build()
+        .map_err(|e| anyhow!("Failed to create HTTP client: {}", e))
+}
+
+/// Start accepting jobs on the server
+pub async fn admin_start(client: &Client) -> Result<Value> {
+    let base_url = env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+
+    let resp = client
+        .post(format!("{}/admin/start", base_url))
+        .header("Content-Length", "0")
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await?;
+
+    handle_admin_response(resp).await
+}
+
+/// Stop accepting jobs on the server
+pub async fn admin_stop(client: &Client) -> Result<Value> {
+    let base_url = env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+
+    let resp = client
+        .post(format!("{}/admin/stop", base_url))
+        .header("Content-Length", "0")
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await?;
+
+    handle_admin_response(resp).await
+}
+
+/// Get server stats
+pub async fn admin_stats(client: &Client, last_day_only: bool) -> Result<Value> {
+    let base_url = env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+
+    let url = if last_day_only {
+        format!("{}/admin/stats?last_day_only=true", base_url)
+    } else {
+        format!("{}/admin/stats", base_url)
+    };
+
+    let resp = client
+        .get(url)
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await?;
+
+    handle_admin_response(resp).await
+}
+
+/// Get a submission by ID
+pub async fn admin_get_submission(client: &Client, submission_id: i64) -> Result<Value> {
+    let base_url = env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+
+    let resp = client
+        .get(format!("{}/admin/submissions/{}", base_url, submission_id))
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await?;
+
+    handle_admin_response(resp).await
+}
+
+/// Delete a submission by ID
+pub async fn admin_delete_submission(client: &Client, submission_id: i64) -> Result<Value> {
+    let base_url = env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+
+    let resp = client
+        .delete(format!("{}/admin/submissions/{}", base_url, submission_id))
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await?;
+
+    handle_admin_response(resp).await
+}
+
+/// Create a dev leaderboard from a problem directory
+pub async fn admin_create_leaderboard(
+    client: &Client,
+    directory: &str,
+) -> Result<Value> {
+    let base_url = env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+
+    let payload = serde_json::json!({
+        "directory": directory
+    });
+
+    let resp = client
+        .post(format!("{}/admin/leaderboards", base_url))
+        .json(&payload)
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await?;
+
+    handle_admin_response(resp).await
+}
+
+/// Delete a leaderboard
+pub async fn admin_delete_leaderboard(client: &Client, leaderboard_name: &str, force: bool) -> Result<Value> {
+    let base_url = env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+
+    let url = if force {
+        format!("{}/admin/leaderboards/{}?force=true", base_url, leaderboard_name)
+    } else {
+        format!("{}/admin/leaderboards/{}", base_url, leaderboard_name)
+    };
+
+    let resp = client
+        .delete(url)
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await?;
+
+    handle_admin_response(resp).await
+}
+
+/// Update problems from a GitHub repository
+pub async fn admin_update_problems(
+    client: &Client,
+    problem_set: Option<&str>,
+    repository: &str,
+    branch: &str,
+    force: bool,
+) -> Result<Value> {
+    let base_url = env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+
+    let mut payload = serde_json::json!({
+        "repository": repository,
+        "branch": branch,
+        "force": force
+    });
+
+    if let Some(ps) = problem_set {
+        payload["problem_set"] = serde_json::Value::String(ps.to_string());
+    }
+
+    let resp = client
+        .post(format!("{}/admin/update-problems", base_url))
+        .json(&payload)
+        .timeout(Duration::from_secs(120)) // Longer timeout for repo download
+        .send()
+        .await?;
+
+    handle_admin_response(resp).await
+}
+
+/// Helper to handle admin API responses
+async fn handle_admin_response(resp: reqwest::Response) -> Result<Value> {
+    let status = resp.status();
+    if !status.is_success() {
+        let error_text = resp.text().await?;
+        let detail = serde_json::from_str::<Value>(&error_text)
+            .ok()
+            .and_then(|v| v.get("detail").and_then(|d| d.as_str()).map(str::to_string));
+        return Err(anyhow!(
+            "Server returned status {}: {}",
+            status,
+            detail.unwrap_or(error_text)
+        ));
+    }
+    resp.json().await.map_err(|e| anyhow!("Failed to parse response: {}", e))
+}
+
 pub async fn fetch_leaderboards(client: &Client) -> Result<Vec<LeaderboardItem>> {
     let base_url =
         env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
