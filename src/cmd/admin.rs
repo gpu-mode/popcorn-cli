@@ -26,13 +26,10 @@ pub enum AdminAction {
         /// The submission ID to delete
         id: i64,
     },
-    /// Create a dev leaderboard from a problem directory
+    /// Create a dev leaderboard from a problem directory (requires gpus in task.yml)
     CreateLeaderboard {
         /// Problem directory name (e.g., "identity_py")
         directory: String,
-        /// GPU type(s) - can be specified multiple times (e.g., --gpu H100 --gpu A100)
-        #[arg(long)]
-        gpu: Vec<String>,
     },
     /// Delete a leaderboard
     DeleteLeaderboard {
@@ -82,9 +79,8 @@ pub async fn handle_admin(action: AdminAction) -> Result<()> {
             println!("Deleted submission {}", id);
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
-        AdminAction::CreateLeaderboard { directory, gpu } => {
-            let gpus = if gpu.is_empty() { None } else { Some(gpu) };
-            let result = service::admin_create_leaderboard(&client, &directory, gpus.as_ref()).await?;
+        AdminAction::CreateLeaderboard { directory } => {
+            let result = service::admin_create_leaderboard(&client, &directory).await?;
             let name = result["leaderboard"].as_str().unwrap_or(&directory);
             println!("Created leaderboard '{}'", name);
             println!("{}", serde_json::to_string_pretty(&result)?);
