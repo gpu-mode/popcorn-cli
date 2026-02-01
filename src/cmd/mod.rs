@@ -6,8 +6,11 @@ use serde_yaml;
 use std::fs::File;
 use std::path::PathBuf;
 
+mod admin;
 mod auth;
 mod submit;
+
+pub use admin::AdminAction;
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 struct Config {
@@ -105,6 +108,11 @@ enum Commands {
         #[arg(long)]
         no_tui: bool,
     },
+    /// Admin commands (requires POPCORN_ADMIN_TOKEN env var)
+    Admin {
+        #[command(subcommand)]
+        action: AdminAction,
+    },
 }
 
 pub async fn execute(cli: Cli) -> Result<()> {
@@ -142,7 +150,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
 
             // Use filepath from Submit command first, fallback to top-level filepath
             let final_filepath = filepath.or(cli.filepath);
-            
+
             if no_tui {
                 submit::run_submit_plain(
                     final_filepath, // Resolved filepath
@@ -164,6 +172,9 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 )
                 .await
             }
+        }
+        Some(Commands::Admin { action }) => {
+            admin::handle_admin(action).await
         }
         None => {
             // Check if any of the submission-related flags were used at the top level
