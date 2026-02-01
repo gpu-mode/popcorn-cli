@@ -57,20 +57,84 @@ When adding new functionality:
 
 #### E2E Regression Testing
 
-Test CLI functionality against a local or production instance:
+Full end-to-end testing requires a running kernelbot API server. You can test against production or a local instance.
+
+##### Option A: Test Against Production
 
 ```bash
-# Test against production
 export POPCORN_API_URL=https://discord-cluster-manager-1f6c4782e60a.herokuapp.com
+cargo run -- submissions list --leaderboard grayscale
+```
 
-# Or test against local kernelbot server
+##### Option B: Test Against Local Server (Recommended for Development)
+
+This tests the complete flow: CLI → API → Database → Modal runner.
+
+**Step 1: Set up kernelbot server** (in the kernelbot repo):
+
+```bash
+# Start PostgreSQL
+brew services start postgresql@14
+
+# Create database and run migrations
+createdb kernelbot
+export DATABASE_URL="postgresql://$(whoami)@localhost:5432/kernelbot"
+uv run yoyo apply --database "$DATABASE_URL" src/migrations/
+
+# Create test user
+psql "$DATABASE_URL" -c "INSERT INTO leaderboard.user_info (id, user_name, cli_id, cli_valid)
+VALUES ('999999', 'testuser', 'test-cli-id-123', true)
+ON CONFLICT (id) DO UPDATE SET cli_id = 'test-cli-id-123', cli_valid = true;"
+
+# Start API server
+cd src/kernelbot
+export ADMIN_TOKEN="your-admin-token"  # Check .env for LOCAL_ADMIN_TOKEN
+uv run python main.py --api-only
+```
+
+**Step 2: Sync leaderboards**:
+
+```bash
+curl -X POST "http://localhost:8000/admin/update-problems" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"problem_set": "pmpp_v2"}'
+```
+
+**Step 3: Configure CLI for local testing**:
+
+```bash
+# Backup and set test config
+cp ~/.popcorn.yaml ~/.popcorn.yaml.bak
+echo "cli_id: test-cli-id-123" > ~/.popcorn.yaml
+```
+
+**Step 4: Run CLI commands**:
+
+```bash
 export POPCORN_API_URL=http://localhost:8000
 
-# Run CLI commands
-cargo run -- submissions list --leaderboard grayscale
-cargo run -- submissions show 123
-cargo run -- submissions delete 123 --force
+# Test submissions commands
+cargo run --release -- submissions list --leaderboard vectoradd_v2
+cargo run --release -- submissions show <ID>
+cargo run --release -- submissions delete <ID>
+
+# Test actual submission (requires Modal account for GPU execution)
+cargo run --release -- submit solution.py --gpu H100 --leaderboard vectoradd_v2 --mode test
 ```
+
+**Step 5: Restore original config**:
+
+```bash
+cp ~/.popcorn.yaml.bak ~/.popcorn.yaml && rm ~/.popcorn.yaml.bak
+```
+
+##### Troubleshooting
+
+- **401 Unauthorized**: CLI ID not registered in database - create test user first
+- **404 Not Found**: Leaderboards not synced - run update-problems endpoint
+- **Connection refused**: API server not running on localhost:8000
+- **"Device not configured"**: TTY issue - ensure POPCORN_API_URL is set
 
 ## Architecture Overview
 
