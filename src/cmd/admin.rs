@@ -39,6 +39,24 @@ pub enum AdminAction {
         #[arg(long)]
         force: bool,
     },
+    /// Update problems from a GitHub repository (mirrors Discord /admin update-problems)
+    UpdateProblems {
+        /// Problem set name (e.g., "nvidia", "pmpp_v2"). If not specified, updates all.
+        #[arg(long)]
+        problem_set: Option<String>,
+
+        /// Repository in format "owner/repo" (default: gpu-mode/reference-kernels)
+        #[arg(long, default_value = "gpu-mode/reference-kernels")]
+        repository: String,
+
+        /// Branch to pull from (default: main)
+        #[arg(long, default_value = "main")]
+        branch: String,
+
+        /// Force update even if task definition changed significantly
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 fn get_admin_token() -> Result<String> {
@@ -89,6 +107,71 @@ pub async fn handle_admin(action: AdminAction) -> Result<()> {
             let result = service::admin_delete_leaderboard(&client, &name, force).await?;
             println!("Deleted leaderboard '{}'", name);
             println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        AdminAction::UpdateProblems {
+            problem_set,
+            repository,
+            branch,
+            force,
+        } => {
+            println!(
+                "Updating problems from {}/tree/{}{}...",
+                repository,
+                branch,
+                problem_set
+                    .as_ref()
+                    .map(|ps| format!(" (problem set: {})", ps))
+                    .unwrap_or_default()
+            );
+            let result = service::admin_update_problems(
+                &client,
+                problem_set.as_deref(),
+                &repository,
+                &branch,
+                force,
+            )
+            .await?;
+
+            // Pretty print the results
+            if let Some(created) = result.get("created").and_then(|v| v.as_array()) {
+                if !created.is_empty() {
+                    println!("\nCreated {} leaderboard(s):", created.len());
+                    for name in created {
+                        println!("  + {}", name.as_str().unwrap_or("unknown"));
+                    }
+                }
+            }
+            if let Some(updated) = result.get("updated").and_then(|v| v.as_array()) {
+                if !updated.is_empty() {
+                    println!("\nUpdated {} leaderboard(s):", updated.len());
+                    for name in updated {
+                        println!("  ~ {}", name.as_str().unwrap_or("unknown"));
+                    }
+                }
+            }
+            if let Some(skipped) = result.get("skipped").and_then(|v| v.as_array()) {
+                if !skipped.is_empty() {
+                    println!("\nSkipped {} leaderboard(s):", skipped.len());
+                    for item in skipped {
+                        let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
+                        let reason = item
+                            .get("reason")
+                            .and_then(|r| r.as_str())
+                            .unwrap_or("no changes");
+                        println!("  - {} ({})", name, reason);
+                    }
+                }
+            }
+            if let Some(errors) = result.get("errors").and_then(|v| v.as_array()) {
+                if !errors.is_empty() {
+                    println!("\nErrors ({}):", errors.len());
+                    for item in errors {
+                        let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
+                        let error = item.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
+                        println!("  ! {}: {}", name, error);
+                    }
+                }
+            }
         }
     }
 

@@ -168,6 +168,36 @@ pub async fn admin_delete_leaderboard(client: &Client, leaderboard_name: &str, f
     handle_admin_response(resp).await
 }
 
+/// Update problems from a GitHub repository
+pub async fn admin_update_problems(
+    client: &Client,
+    problem_set: Option<&str>,
+    repository: &str,
+    branch: &str,
+    force: bool,
+) -> Result<Value> {
+    let base_url = env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+
+    let mut payload = serde_json::json!({
+        "repository": repository,
+        "branch": branch,
+        "force": force
+    });
+
+    if let Some(ps) = problem_set {
+        payload["problem_set"] = serde_json::Value::String(ps.to_string());
+    }
+
+    let resp = client
+        .post(format!("{}/admin/update-problems", base_url))
+        .json(&payload)
+        .timeout(Duration::from_secs(120)) // Longer timeout for repo download
+        .send()
+        .await?;
+
+    handle_admin_response(resp).await
+}
+
 /// Helper to handle admin API responses
 async fn handle_admin_response(resp: reqwest::Response) -> Result<Value> {
     let status = resp.status();
