@@ -128,22 +128,23 @@ pub async fn admin_delete_submission(client: &Client, submission_id: i64) -> Res
     handle_admin_response(resp).await
 }
 
-/// Create a leaderboard
+/// Create a dev leaderboard from a problem directory
 pub async fn admin_create_leaderboard(
     client: &Client,
-    name: &str,
-    deadline: &str,
     directory: &str,
-    gpu: &str,
+    gpus: Option<&Vec<String>>,
 ) -> Result<Value> {
     let base_url = env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
 
-    let payload = serde_json::json!({
-        "name": name,
-        "deadline": deadline,
-        "directory": directory,
-        "gpu": gpu
+    let mut payload = serde_json::json!({
+        "directory": directory
     });
+
+    if let Some(gpu_list) = gpus {
+        payload["gpu"] = serde_json::Value::Array(
+            gpu_list.iter().map(|g| serde_json::Value::String(g.clone())).collect()
+        );
+    }
 
     let resp = client
         .post(format!("{}/admin/leaderboards", base_url))
