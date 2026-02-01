@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 mod admin;
 mod auth;
+mod submissions;
 mod submit;
 
 pub use admin::AdminAction;
@@ -73,6 +74,34 @@ enum AuthProvider {
 }
 
 #[derive(Subcommand, Debug)]
+enum SubmissionsAction {
+    /// List your submissions for a leaderboard
+    List {
+        /// Leaderboard name (required)
+        #[arg(long)]
+        leaderboard: String,
+
+        /// Maximum number of submissions to show
+        #[arg(long, default_value = "50")]
+        limit: i32,
+    },
+    /// Show a specific submission with full details and code
+    Show {
+        /// Submission ID
+        id: i64,
+    },
+    /// Delete a submission
+    Delete {
+        /// Submission ID
+        id: i64,
+
+        /// Skip confirmation prompt
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 enum Commands {
     Reregister {
         #[command(subcommand)]
@@ -110,6 +139,11 @@ enum Commands {
     Admin {
         #[command(subcommand)]
         action: AdminAction,
+    },
+    /// Manage your submissions
+    Submissions {
+        #[command(subcommand)]
+        action: SubmissionsAction,
     },
 }
 
@@ -172,6 +206,26 @@ pub async fn execute(cli: Cli) -> Result<()> {
             }
         }
         Some(Commands::Admin { action }) => admin::handle_admin(action).await,
+        Some(Commands::Submissions { action }) => {
+            let config = load_config()?;
+            let cli_id = config.cli_id.ok_or_else(|| {
+                anyhow!(
+                    "cli_id not found in config file ({}). Please run `popcorn register` first.",
+                    get_config_path()
+                        .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
+                )
+            })?;
+
+            match action {
+                SubmissionsAction::List { leaderboard, limit } => {
+                    submissions::list_submissions(cli_id, leaderboard, Some(limit)).await
+                }
+                SubmissionsAction::Show { id } => submissions::show_submission(cli_id, id).await,
+                SubmissionsAction::Delete { id, force } => {
+                    submissions::delete_submission(cli_id, id, force).await
+                }
+            }
+        }
         None => {
             // Check if any of the submission-related flags were used at the top level
             if cli.gpu.is_some() || cli.leaderboard.is_some() || cli.mode.is_some() {
