@@ -338,7 +338,6 @@ impl App {
                                             "Error starting GPU fetch: {}",
                                             e
                                         ));
-                                        return;
                                     }
                                 }
                             } else {
