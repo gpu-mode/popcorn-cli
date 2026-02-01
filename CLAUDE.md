@@ -57,17 +57,17 @@ When adding new functionality:
 
 #### E2E Regression Testing
 
-Use a local instance of kernelbot to test CLI functionality end-to-end:
+Test CLI functionality against a local or production instance:
 
 ```bash
-# Start local kernelbot server (see kernelbot repo)
-cd ../kernelbot
-docker compose up -d
-uv run uvicorn src.kernelbot.api.main:app --reload --port 8000
+# Test against production
+export POPCORN_API_URL=https://discord-cluster-manager-1f6c4782e60a.herokuapp.com
 
-# Test CLI against local instance
+# Or test against local kernelbot server
 export POPCORN_API_URL=http://localhost:8000
-cargo run -- submissions list --leaderboard test-leaderboard
+
+# Run CLI commands
+cargo run -- submissions list --leaderboard grayscale
 cargo run -- submissions show 123
 cargo run -- submissions delete 123 --force
 ```
