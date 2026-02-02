@@ -10,7 +10,9 @@ use std::path::Path;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 
-use crate::models::{GpuItem, LeaderboardItem, SubmissionDetails, SubmissionRun, UserSubmission};
+use crate::models::{
+    GpuItem, LeaderboardItem, SubmissionDetails, SubmissionRun, UserSubmission, UserSubmissionRun,
+};
 
 // Helper function to create a reusable reqwest client
 pub fn create_client(cli_id: Option<String>) -> Result<Client> {
@@ -335,14 +337,25 @@ pub async fn get_user_submissions(
 
     let mut result = Vec::new();
     for sub in submissions {
+        let runs = sub["runs"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .map(|r| UserSubmissionRun {
+                        gpu_type: r["gpu_type"].as_str().unwrap_or("").to_string(),
+                        score: r["score"].as_f64(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
         result.push(UserSubmission {
             id: sub["id"].as_i64().unwrap_or(0),
             leaderboard_name: sub["leaderboard_name"].as_str().unwrap_or("").to_string(),
             file_name: sub["file_name"].as_str().unwrap_or("").to_string(),
             submission_time: sub["submission_time"].as_str().unwrap_or("").to_string(),
             done: sub["done"].as_bool().unwrap_or(false),
-            gpu_type: sub["gpu_type"].as_str().map(str::to_string),
-            score: sub["score"].as_f64(),
+            runs,
         });
     }
 

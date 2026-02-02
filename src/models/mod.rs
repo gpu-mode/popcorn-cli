@@ -58,7 +58,13 @@ pub struct UserSubmission {
     pub file_name: String,
     pub submission_time: String,
     pub done: bool,
-    pub gpu_type: Option<String>,
+    pub runs: Vec<UserSubmissionRun>,
+}
+
+/// A run summary for list view (gpu_type and score only)
+#[derive(Clone, Debug)]
+pub struct UserSubmissionRun {
+    pub gpu_type: String,
     pub score: Option<f64>,
 }
 

@@ -20,18 +20,32 @@ pub async fn list_submissions(
     // Print header
     println!(
         "{:<8} {:<20} {:<20} {:<20} {:<12} {:<10} {:>10}",
-        "ID", "Leaderboard", "File", "Time", "GPU", "Status", "Score"
+        "ID", "Leaderboard", "File", "Time", "GPU(s)", "Status", "Score"
     );
     println!("{}", "-".repeat(105));
 
     // Print each submission
     for sub in submissions {
         let status = if sub.done { "done" } else { "pending" };
-        let gpu = sub.gpu_type.as_deref().unwrap_or("-");
-        let score = sub
-            .score
+
+        // Collect all GPU types and best score from runs
+        let gpus: Vec<&str> = sub.runs.iter().map(|r| r.gpu_type.as_str()).collect();
+        let gpu_display = if gpus.is_empty() {
+            "-".to_string()
+        } else {
+            gpus.join(",")
+        };
+
+        // Get best score (lowest)
+        let best_score = sub
+            .runs
+            .iter()
+            .filter_map(|r| r.score)
+            .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let score_display = best_score
             .map(|s| format!("{:.4}", s))
             .unwrap_or_else(|| "-".to_string());
+
         let time = truncate(&sub.submission_time, 19);
 
         println!(
@@ -40,9 +54,9 @@ pub async fn list_submissions(
             truncate(&sub.leaderboard_name, 19),
             truncate(&sub.file_name, 19),
             time,
-            gpu,
+            truncate(&gpu_display, 11),
             status,
-            score
+            score_display
         );
     }
 
