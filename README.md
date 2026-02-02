@@ -66,7 +66,116 @@ wget https://raw.githubusercontent.com/gpu-mode/reference-kernels/refs/heads/mai
 popcorn-cli submit --gpu A100 --leaderboard grayscale --mode leaderboard submission.py
 ```
 
-We regularly run competitions with clear due dates but for beginners we will always keep open the PMPP_v2 problem set https://github.com/gpu-mode/reference-kernels/tree/main/problems/pmpp_v2 
+We regularly run competitions with clear due dates but for beginners we will always keep open the PMPP_v2 problem set https://github.com/gpu-mode/reference-kernels/tree/main/problems/pmpp_v2
+
+## Commands
+
+### Submit
+
+Submit a solution to a leaderboard. Supports both TUI (interactive) and plain modes.
+
+```bash
+# Interactive TUI mode - select leaderboard, GPU, and mode interactively
+popcorn submit solution.py
+
+# Direct submission with all options
+popcorn submit --leaderboard grayscale --gpu A100 --mode leaderboard solution.py
+
+# Plain output mode (no TUI, good for CI/scripts)
+popcorn submit --no-tui --leaderboard grayscale --gpu A100 --mode test solution.py
+
+# Save results to a file
+popcorn submit --output results.json --leaderboard grayscale --gpu A100 --mode benchmark solution.py
+```
+
+**Submission modes:**
+- `test` - Quick test run to check correctness
+- `benchmark` - Benchmark your solution (no leaderboard impact)
+- `leaderboard` - Official ranked submission
+- `profile` - Profile with Nsight Compute (limited availability)
+
+### Submissions
+
+Manage your past submissions.
+
+```bash
+# List your submissions for a leaderboard
+popcorn submissions list --leaderboard grayscale
+
+# Limit number of results
+popcorn submissions list --leaderboard grayscale --limit 10
+
+# View a specific submission with full code
+popcorn submissions show <ID>
+
+# Delete a submission (with confirmation prompt)
+popcorn submissions delete <ID>
+
+# Delete without confirmation
+popcorn submissions delete <ID> --force
+```
+
+### Authentication
+
+Register or re-register your CLI with Discord or GitHub.
+
+```bash
+# Initial registration (Discord recommended)
+popcorn register discord
+popcorn register github
+
+# Re-register if you need to link a new account
+popcorn reregister discord
+popcorn reregister github
+```
+
+### Admin Commands
+
+Admin commands require the `POPCORN_ADMIN_TOKEN` environment variable.
+
+```bash
+# Server control
+popcorn admin start                    # Start accepting jobs
+popcorn admin stop                     # Stop accepting jobs
+popcorn admin stats                    # Get server statistics
+popcorn admin stats --last-day         # Stats for last 24 hours only
+
+# Submission management
+popcorn admin get-submission <ID>      # Get any submission by ID
+popcorn admin delete-submission <ID>   # Delete any submission
+
+# Leaderboard management
+popcorn admin create-leaderboard <dir> # Create leaderboard from problem directory
+popcorn admin delete-leaderboard <name>        # Delete a leaderboard
+popcorn admin delete-leaderboard <name> --force # Force delete with submissions
+
+# Update problems from GitHub
+popcorn admin update-problems
+popcorn admin update-problems --problem-set nvidia --force
+```
+
+### File Directives
+
+You can embed default settings directly in your solution files:
+
+```python
+#!POPCORN leaderboard grayscale
+#!POPCORN gpu A100
+
+def solution():
+    ...
+```
+
+Or C++ style:
+```cpp
+//!POPCORN leaderboard nvidia-matmul
+//!POPCORN gpu H100
+```
+
+When these directives are present, you can submit with just:
+```bash
+popcorn submit solution.py
+```
 
 ## Submission Format
 
@@ -86,13 +195,5 @@ Our entire evaluation infrastructure is open source and you can learn more [here
 ## Stay Updated
 
 Interested in new kernel competitions? Join [discord.gg/gpumode](https://discord.gg/gpumode) and check out the **#announcements** channel to be notified when new challenges drop.
-
-## Discover Problems
-
-The CLI supports everything Discord does, so you can also discover which leaderboards are available. To make discovery more pleasant we also offer a TUI experience.
-
-```bash
-popcorn-cli submit <submission-file>
-```
 
 glhf!
