@@ -41,7 +41,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-musl
             artifact_name: popcorn-cli
             asset_name: popcorn-cli-linux.tar.gz
             compress_cmd: tar -czf
@@ -80,6 +80,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Install musl tools (Linux musl)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
       
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
