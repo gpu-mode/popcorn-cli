@@ -56,14 +56,14 @@ impl App {
                 "test".to_string(),
             ),
             SubmissionModeItem::new(
-                "Benchmark".to_string(),
-                "Benchmark the solution, this also runs the tests and afterwards runs the benchmark, returning detailed timing results".to_string(),
-                "benchmark".to_string(),
+                "Private".to_string(),
+                "Run benchmarks privately. Returns detailed timing results but doesn't affect leaderboard ranking.".to_string(),
+                "private".to_string(),
             ),
             SubmissionModeItem::new(
-                "Leaderboard".to_string(),
-                "Submit to the leaderboard, this first runs public tests and then private tests. If both pass, the submission is evaluated and submit to the leaderboard.".to_string(),
-                "leaderboard".to_string(),
+                "Public".to_string(),
+                "Submit to the public leaderboard. Runs tests, then benchmarks, and if all pass, evaluates and ranks your submission.".to_string(),
+                "public".to_string(),
             ),
             SubmissionModeItem::new(
                 "Profile".to_string(),
@@ -731,7 +731,7 @@ pub async fn run_submit_plain(
         })?;
 
     let final_mode = mode.ok_or_else(|| {
-        anyhow!("Submission mode not specified. Use --mode flag (test, benchmark, leaderboard, profile)")
+        anyhow!("Submission mode not specified. Use --mode flag (test, private, public, profile)")
     })?;
 
     // Read file content
