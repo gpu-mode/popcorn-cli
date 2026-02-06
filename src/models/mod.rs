@@ -49,3 +49,47 @@ pub enum AppState {
     SubmissionModeSelection,
     WaitingForResult,
 }
+
+/// Summary of a user submission for list view
+#[derive(Clone, Debug)]
+pub struct UserSubmission {
+    pub id: i64,
+    pub leaderboard_name: String,
+    pub file_name: String,
+    pub submission_time: String,
+    pub done: bool,
+    pub runs: Vec<UserSubmissionRun>,
+}
+
+/// A run summary for list view (gpu_type and score only)
+#[derive(Clone, Debug)]
+pub struct UserSubmissionRun {
+    pub gpu_type: String,
+    pub score: Option<f64>,
+}
+
+/// Full submission details including code and runs
+#[derive(Clone, Debug)]
+pub struct SubmissionDetails {
+    pub id: i64,
+    pub leaderboard_id: i64,
+    pub leaderboard_name: String,
+    pub file_name: String,
+    pub user_id: String,
+    pub submission_time: String,
+    pub done: bool,
+    pub code: String,
+    pub runs: Vec<SubmissionRun>,
+}
+
+/// A single run within a submission
+#[derive(Clone, Debug)]
+pub struct SubmissionRun {
+    pub start_time: Option<String>,
+    pub end_time: Option<String>,
+    pub mode: String,
+    pub secret: bool,
+    pub runner: String,
+    pub score: Option<f64>,
+    pub passed: bool,
+}
