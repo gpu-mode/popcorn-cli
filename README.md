@@ -181,6 +181,22 @@ popcorn submit solution.py
 
 Submissions are always a single Python file. If you want to submit native CUDA code, you can use PyTorch's `load_inline` feature (which uses nvcc) or the more experimental [`compile_kernel` API](https://x.com/gaunernst/status/2015242181049745607) for fast compilation. See [this example](https://github.com/gpu-mode/reference-kernels/blob/main/problems/pmpp_v2/vectoradd_py/solutions/correct/submission_cuda_inline.py) for reference.
 
+### Installing Extra Dependencies
+
+If your submission requires a Python package that isn't pre-installed in the runtime environment, you can install it directly in your submission file:
+
+```python
+import subprocess
+import sys
+subprocess.check_call([sys.executable, "-m", "pip", "install", "some_package"])
+```
+
+This runs before the rest of your code executes, so the package will be available for import afterwards.
+
+If you find yourself installing the same package frequently, we're happy to add it to the runtime by default. Open a PR on [gpu-mode/kernelbot](https://github.com/gpu-mode/kernelbot):
+- For Modal-based runners: edit [`src/runners/modal_runner.py`](https://github.com/gpu-mode/kernelbot/blob/main/src/runners/modal_runner.py)
+- For on-prem hardware: look for the Dockerfiles in the same repo
+
 For syntax highlighting of both C++ and Python in your IDE, you can use the [PyTorch Load Inline Highlighter](https://marketplace.visualstudio.com/items?itemName=msaroufim.pytorch-load-inline-highlighter) VS Code extension.
 
 ## Reference Kernels
