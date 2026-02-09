@@ -129,31 +129,6 @@ popcorn reregister discord
 popcorn reregister github
 ```
 
-### Admin Commands
-
-Admin commands require the `POPCORN_ADMIN_TOKEN` environment variable.
-
-```bash
-# Server control
-popcorn admin start                    # Start accepting jobs
-popcorn admin stop                     # Stop accepting jobs
-popcorn admin stats                    # Get server statistics
-popcorn admin stats --last-day         # Stats for last 24 hours only
-
-# Submission management
-popcorn admin get-submission <ID>      # Get any submission by ID
-popcorn admin delete-submission <ID>   # Delete any submission
-
-# Leaderboard management
-popcorn admin create-leaderboard <dir> # Create leaderboard from problem directory
-popcorn admin delete-leaderboard <name>        # Delete a leaderboard
-popcorn admin delete-leaderboard <name> --force # Force delete with submissions
-
-# Update problems from GitHub
-popcorn admin update-problems
-popcorn admin update-problems --problem-set nvidia --force
-```
-
 ### File Directives
 
 You can embed default settings directly in your solution files:
