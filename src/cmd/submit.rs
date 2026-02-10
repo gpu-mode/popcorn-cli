@@ -295,10 +295,10 @@ impl App {
             .clone()
             .ok_or_else(|| anyhow!("Submission mode not selected"))?;
 
-        // Read file content
+        // Read file content as bytes (supports both text and archive files)
         let mut file = File::open(&filepath)?;
-        let mut file_content = String::new();
-        file.read_to_string(&mut file_content)?;
+        let mut file_content = Vec::new();
+        file.read_to_end(&mut file_content)?;
 
         self.submission_task = Some(tokio::spawn(async move {
             service::submit_solution(
@@ -734,10 +734,10 @@ pub async fn run_submit_plain(
         anyhow!("Submission mode not specified. Use --mode flag (test, benchmark, leaderboard, profile)")
     })?;
 
-    // Read file content
+    // Read file content as bytes (supports both text and archive files)
     let mut file = File::open(&file_to_submit)?;
-    let mut file_content = String::new();
-    file.read_to_string(&mut file_content)?;
+    let mut file_content = Vec::new();
+    file.read_to_end(&mut file_content)?;
 
     eprintln!("Submitting to leaderboard: {}", final_leaderboard);
     eprintln!("GPU: {}", final_gpu);
