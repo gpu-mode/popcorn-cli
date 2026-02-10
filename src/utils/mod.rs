@@ -7,7 +7,28 @@ pub struct PopcornDirectives {
     pub gpus: Vec<String>,
 }
 
+pub fn is_archive_file<P: AsRef<Path>>(filepath: P) -> bool {
+    let path = filepath.as_ref();
+    let name = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_lowercase();
+    name.ends_with(".tar.gz") || name.ends_with(".tgz") || name.ends_with(".zip")
+}
+
 pub fn get_popcorn_directives<P: AsRef<Path>>(filepath: P) -> Result<(PopcornDirectives, bool)> {
+    // Archive files (tarballs, zips) are binary and cannot contain directives
+    if is_archive_file(&filepath) {
+        return Ok((
+            PopcornDirectives {
+                leaderboard_name: String::new(),
+                gpus: Vec::new(),
+            },
+            false,
+        ));
+    }
+
     let content = fs::read_to_string(filepath)?;
 
     let mut gpus: Vec<String> = Vec::new();
