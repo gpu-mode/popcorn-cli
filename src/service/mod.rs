@@ -450,7 +450,7 @@ pub async fn delete_user_submission(client: &Client, submission_id: i64) -> Resu
 pub async fn submit_solution<P: AsRef<Path>>(
     client: &Client,
     filepath: P,
-    file_content: &str,
+    file_content: &[u8],
     leaderboard: &str,
     gpu: &str,
     submission_mode: &str,
@@ -465,7 +465,7 @@ pub async fn submit_solution<P: AsRef<Path>>(
         .ok_or_else(|| anyhow!("Invalid filepath"))?
         .to_string_lossy();
 
-    let part = Part::bytes(file_content.as_bytes().to_vec()).file_name(filename.to_string());
+    let part = Part::bytes(file_content.to_vec()).file_name(filename.to_string());
 
     let form = Form::new().part("file", part);
 
@@ -824,7 +824,7 @@ mod tests {
         let result = submit_solution(
             &client,
             "test.py",
-            "print('hello')",
+            b"print('hello')",
             "test-leaderboard",
             "H100",
             "test",
