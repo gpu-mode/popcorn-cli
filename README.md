@@ -62,8 +62,8 @@ Sometimes you'll get an error that you're already authenticated despite being un
 ## Make your first submission
 
 ```bash
-wget https://raw.githubusercontent.com/gpu-mode/reference-kernels/refs/heads/main/problems/pmpp/grayscale_py/submission.py
-popcorn-cli submit --gpu A100 --leaderboard grayscale --mode leaderboard submission.py
+wget https://raw.githubusercontent.com/gpu-mode/reference-kernels/refs/heads/main/problems/pmpp_v2/grayscale_py/submission.py
+popcorn-cli submit --gpu A100 --leaderboard grayscale_v2 --mode leaderboard submission.py
 ```
 
 We regularly run competitions with clear due dates but for beginners we will always keep open the PMPP_v2 problem set https://github.com/gpu-mode/reference-kernels/tree/main/problems/pmpp_v2
@@ -79,13 +79,13 @@ Submit a solution to a leaderboard. Supports both TUI (interactive) and plain mo
 popcorn submit solution.py
 
 # Direct submission with all options
-popcorn submit --leaderboard grayscale --gpu A100 --mode leaderboard solution.py
+popcorn submit --leaderboard grayscale_v2 --gpu A100 --mode leaderboard solution.py
 
 # Plain output mode (no TUI, good for CI/scripts)
-popcorn submit --no-tui --leaderboard grayscale --gpu A100 --mode test solution.py
+popcorn submit --no-tui --leaderboard grayscale_v2 --gpu A100 --mode test solution.py
 
 # Save results to a file
-popcorn submit --output results.json --leaderboard grayscale --gpu A100 --mode benchmark solution.py
+popcorn submit --output results.json --leaderboard grayscale_v2 --gpu A100 --mode benchmark solution.py
 ```
 
 **Submission modes:**
@@ -100,10 +100,10 @@ Manage your past submissions.
 
 ```bash
 # List your submissions for a leaderboard
-popcorn submissions list --leaderboard grayscale
+popcorn submissions list --leaderboard grayscale_v2
 
 # Limit number of results
-popcorn submissions list --leaderboard grayscale --limit 10
+popcorn submissions list --leaderboard grayscale_v2 --limit 10
 
 # View a specific submission with full code
 popcorn submissions show <ID>
@@ -134,7 +134,7 @@ popcorn reregister github
 You can embed default settings directly in your solution files:
 
 ```python
-#!POPCORN leaderboard grayscale
+#!POPCORN leaderboard grayscale_v2
 #!POPCORN gpu A100
 
 def solution():
