@@ -1,6 +1,8 @@
 submission.*
-!templates/setup/submission.py
 target/
 scratch.md
 *claude
 *.zip
+.codex/
+.popcorn/
+.DS_Store
