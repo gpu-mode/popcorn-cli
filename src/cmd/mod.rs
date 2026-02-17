@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 mod admin;
 mod auth;
+mod setup;
 mod submissions;
 mod submit;
 
@@ -103,6 +104,8 @@ enum SubmissionsAction {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// Bootstrap this project with Popcorn agent skills and a submission template
+    Setup,
     Reregister {
         #[command(subcommand)]
         provider: AuthProvider,
@@ -149,6 +152,7 @@ enum Commands {
 
 pub async fn execute(cli: Cli) -> Result<()> {
     match cli.command {
+        Some(Commands::Setup) => setup::run_setup().await,
         Some(Commands::Reregister { provider }) => {
             let provider_str = match provider {
                 AuthProvider::Discord => "discord",
