@@ -1,4 +1,5 @@
 submission.*
+!templates/setup/submission.py
 target/
 scratch.md
 *claude
