@@ -70,6 +70,17 @@ We regularly run competitions with clear due dates but for beginners we will alw
 
 ## Commands
 
+### Setup
+
+Bootstrap a project with Popcorn skill scaffolding and a submission template. You can overwrite existing files with `--force`.
+
+```bash
+# Create project skill scaffolding + submission.py
+popcorn setup
+```
+
+This will create a new agent skill based on the [templates](templates/setup) and add it to your `.claude/skills` or `.codex/skills` directory.
+
 ### Submit
 
 Submit a solution to a leaderboard. Supports both TUI (interactive) and plain modes.
