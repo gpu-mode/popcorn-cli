@@ -15,7 +15,7 @@ async fn main() {
     if env::var("POPCORN_API_URL").is_err() {
         env::set_var(
             "POPCORN_API_URL",
-            "https://discord-cluster-manager-1f6c4782e60a.herokuapp.com",
+            "https://site--bot--dxfjds728w5v.code.run",
         );
     }
     // Parse command line arguments

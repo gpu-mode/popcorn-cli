@@ -80,7 +80,7 @@ If the scripts don't work, you can manually install:
 - Check if the install directory is in your PATH:
   - Linux/macOS: `echo $PATH`
   - Windows: `echo $env:PATH`
-- Check if POPCORN_API_URL is set to https://discord-cluster-manager-1f6c4782e60a.herokuapp.com
+- Check if POPCORN_API_URL is set to https://site--bot--dxfjds728w5v.code.run
   - Linux/macOS: `echo $POPCORN_API_URL`
   - Windows: `echo $env:POPCORN_API_URL`
 
