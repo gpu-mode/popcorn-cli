@@ -86,13 +86,13 @@ pub async fn run_auth(reset: bool, auth_provider: &str) -> Result<()> {
 
     let auth_url = match auth_provider {
         "discord" => {
-            let base_auth_url = "https://discord.com/oauth2/authorize?client_id=1361364685491802243&response_type=code&redirect_uri=https%3A%2F%2Fdiscord-cluster-manager-1f6c4782e60a.herokuapp.com%2Fauth%2Fcli%2Fdiscord&scope=identify";
+            let base_auth_url = "https://discord.com/oauth2/authorize?client_id=1361364685491802243&response_type=code&redirect_uri=https%3A%2F%2Fsite--bot--dxfjds728w5v.code.run%2Fauth%2Fcli%2Fdiscord&scope=identify";
             format!("{}&state={}", base_auth_url, state_b64)
         }
         "github" => {
             let client_id = "Ov23lieFd2onYk4OnKIR";
             let redirect_uri =
-                "https://discord-cluster-manager-1f6c4782e60a.herokuapp.com/auth/cli/github";
+                "https://site--bot--dxfjds728w5v.code.run/auth/cli/github";
             let encoded_redirect_uri = urlencoding::encode(redirect_uri);
             format!(
                 "https://github.com/login/oauth/authorize?client_id={}&state={}&redirect_uri={}",
