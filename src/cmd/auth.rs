@@ -91,8 +91,7 @@ pub async fn run_auth(reset: bool, auth_provider: &str) -> Result<()> {
         }
         "github" => {
             let client_id = "Ov23lieFd2onYk4OnKIR";
-            let redirect_uri =
-                "https://site--bot--dxfjds728w5v.code.run/auth/cli/github";
+            let redirect_uri = "https://site--bot--dxfjds728w5v.code.run/auth/cli/github";
             let encoded_redirect_uri = urlencoding::encode(redirect_uri);
             format!(
                 "https://github.com/login/oauth/authorize?client_id={}&state={}&redirect_uri={}",
