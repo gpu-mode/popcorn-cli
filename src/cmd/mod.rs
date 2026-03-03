@@ -40,6 +40,7 @@ fn load_config() -> Result<Config> {
 
 #[derive(Parser, Debug)]
 #[command(author, version = env!("CLI_VERSION"), about, long_about = None)]
+/// Popcorn CLI for GPU Mode competitions. Run `popcorn setup` first in each project so agents use the correct workflow and templates.
 pub struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -104,7 +105,7 @@ enum SubmissionsAction {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Bootstrap this project with Popcorn agent skills and a submission template
+    /// Run this first: bootstrap the project with Popcorn agent skills and a submission template
     Setup,
     Reregister {
         #[command(subcommand)]
