@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context, Result};
+use chrono::{NaiveDate, NaiveDateTime, Utc};
 use serde::Deserialize;
 use serde_json::json;
 use std::env;
@@ -15,21 +16,33 @@ const NATIVE_SKILL_TEMPLATE: &str =
     include_str!("../../templates/setup/skills/load-inline-native-code/SKILL.md");
 const AGENTS_TEMPLATE: &str = include_str!("../../templates/setup/AGENTS.md");
 
-const COMPETITION_YAMLS: &[&str] = &[
-    "pmpp_v2.yaml",
-    "nvidia.yaml",
-    "amd.yaml",
-    "amd_distributed.yaml",
-    "bioml.yaml",
-];
-
 const RAW_GITHUB_BASE: &str =
     "https://raw.githubusercontent.com/gpu-mode/reference-kernels/main/problems";
+
+const GITHUB_API_CONTENTS: &str =
+    "https://api.github.com/repos/gpu-mode/reference-kernels/contents/problems";
 
 #[derive(Deserialize)]
 struct CompetitionIndex {
     name: String,
+    #[serde(default)]
+    deadline: String,
     problems: Vec<ProblemEntry>,
+}
+
+fn is_active(deadline: &str) -> bool {
+    let deadline = deadline.trim();
+    if deadline.is_empty() {
+        return true; // No deadline means always open
+    }
+    let now = Utc::now().naive_utc();
+    if let Ok(dt) = NaiveDateTime::parse_from_str(deadline, "%Y-%m-%d %H:%M") {
+        return now < dt;
+    }
+    if let Ok(d) = NaiveDate::parse_from_str(deadline, "%Y-%m-%d") {
+        return now.date() <= d;
+    }
+    true // Can't parse — show it rather than hide it
 }
 
 #[derive(Deserialize)]
@@ -56,9 +69,50 @@ impl ActionStatus {
     }
 }
 
+async fn discover_competition_yamls(client: &reqwest::Client) -> Result<Vec<String>> {
+    let resp = client
+        .get(GITHUB_API_CONTENTS)
+        .header("User-Agent", "popcorn-cli")
+        .header("Accept", "application/vnd.github.v3+json")
+        .send()
+        .await
+        .context("Failed to list problems directory from GitHub API")?;
+
+    if !resp.status().is_success() {
+        return Err(anyhow!(
+            "GitHub API returned status {} when listing problems directory",
+            resp.status()
+        ));
+    }
+
+    let items: Vec<serde_json::Value> = resp
+        .json()
+        .await
+        .context("Failed to parse GitHub API response")?;
+    let yamls: Vec<String> = items
+        .iter()
+        .filter_map(|item| {
+            let name = item.get("name")?.as_str()?;
+            if name.ends_with(".yaml") || name.ends_with(".yml") {
+                Some(name.to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if yamls.is_empty() {
+        return Err(anyhow!(
+            "No competition YAML files found in problems directory"
+        ));
+    }
+    Ok(yamls)
+}
+
 async fn fetch_competition_index(client: &reqwest::Client) -> Result<Vec<(String, ProblemEntry)>> {
+    let yaml_files = discover_competition_yamls(client).await?;
     let mut entries = Vec::new();
-    for filename in COMPETITION_YAMLS {
+    for filename in &yaml_files {
         let url = format!("{}/{}", RAW_GITHUB_BASE, filename);
         let resp = client
             .get(&url)
@@ -76,6 +130,9 @@ async fn fetch_competition_index(client: &reqwest::Client) -> Result<Vec<(String
         let text = resp.text().await?;
         let index: CompetitionIndex =
             serde_yaml::from_str(&text).with_context(|| format!("Failed to parse {}", filename))?;
+        if !is_active(&index.deadline) {
+            continue;
+        }
         let comp_name = index.name.clone();
         for problem in index.problems {
             entries.push((comp_name.clone(), problem));
