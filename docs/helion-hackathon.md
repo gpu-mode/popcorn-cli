@@ -116,14 +116,18 @@ import torch
 import helion
 import helion.language as hl
 
-# Map input shapes to optimized configs (autotune each shape locally)
+# Map input shapes to optimized configs (autotune each shape locally).
+# Include all test and benchmark shapes from task.yml.
 SHAPE_CONFIGS: dict[tuple, helion.Config] = {
+    # Test shapes
+    (1, 64, 64, 4): helion.Config(block_sizes=[1, 32], num_warps=4, num_stages=3),
+    (2, 128, 128, 4): helion.Config(block_sizes=[1, 32], num_warps=4, num_stages=3),
+    # ... one entry per test shape
+    # Benchmark shapes
     (1, 768, 512, 4): helion.Config(block_sizes=[1, 32], num_warps=4, num_stages=3),
     (1, 768, 2048, 4): helion.Config(block_sizes=[1, 64], num_warps=8, num_stages=2),
     # ... one entry per benchmark shape
 }
-
-DEFAULT_CONFIG = helion.Config(block_sizes=[1, 8], num_warps=1, num_stages=1)
 
 
 def _make_kernel(config: helion.Config):
@@ -136,14 +140,13 @@ def _make_kernel(config: helion.Config):
 
 
 _KERNELS = {shape: _make_kernel(cfg) for shape, cfg in SHAPE_CONFIGS.items()}
-_DEFAULT_KERNEL = _make_kernel(DEFAULT_CONFIG)
 
 
 def custom_kernel(data: input_t) -> output_t:
     x, weight, bias = data
     B, D, S = x.shape
     W = weight.shape[1]
-    kernel = _KERNELS.get((B, D, S, W), _DEFAULT_KERNEL)
+    kernel = _KERNELS[(B, D, S, W)]
     return kernel(x, weight, bias)
 ```
 
