@@ -274,13 +274,9 @@ def my_kernel(...):
     ...
 ```
 
-### Which combination should I use?
+### Which should I use?
 
-Try all combinations and submit whichever gives the best benchmark numbers:
-- Default Triton backend without ACF
-- Default Triton backend with ACF
-- TileIR backend without ACF
-- TileIR backend with ACF
+Try both backends and with/without ACFs, then submit whichever gives the best benchmark numbers.
 
 ## Tips
 
