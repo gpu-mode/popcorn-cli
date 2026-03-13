@@ -276,7 +276,7 @@ def my_kernel(...):
 
 ### Which should I use?
 
-Try both backends and with/without ACFs, then submit whichever gives the best benchmark numbers.
+Try both `ENABLE_TILE=0` and `ENABLE_TILE=1`, with and without ACFs, then submit whichever gives the best benchmark numbers.
 
 ## Tips
 
