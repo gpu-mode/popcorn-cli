@@ -188,6 +188,7 @@ pub async fn admin_update_problems(
     repository: &str,
     branch: &str,
     force: bool,
+    closed: bool,
 ) -> Result<Value> {
     let base_url =
         env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
@@ -202,10 +203,69 @@ pub async fn admin_update_problems(
         payload["problem_set"] = serde_json::Value::String(ps.to_string());
     }
 
+    if closed {
+        payload["visibility"] = serde_json::Value::String("closed".to_string());
+    }
+
     let resp = client
         .post(format!("{}/admin/update-problems", base_url))
         .json(&payload)
         .timeout(Duration::from_secs(120)) // Longer timeout for repo download
+        .send()
+        .await?;
+
+    handle_admin_response(resp).await
+}
+
+/// Generate invite codes for one or more leaderboards
+pub async fn admin_generate_invites(
+    client: &Client,
+    leaderboards: &[String],
+    count: u32,
+) -> Result<Value> {
+    let base_url =
+        env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+
+    let payload = serde_json::json!({
+        "leaderboards": leaderboards,
+        "count": count,
+    });
+
+    let resp = client
+        .post(format!("{}/admin/invites", base_url))
+        .json(&payload)
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await?;
+
+    handle_admin_response(resp).await
+}
+
+/// List invite codes for a leaderboard
+pub async fn admin_list_invites(client: &Client, leaderboard_name: &str) -> Result<Value> {
+    let base_url =
+        env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+
+    let resp = client
+        .get(format!(
+            "{}/admin/leaderboards/{}/invites",
+            base_url, leaderboard_name
+        ))
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await?;
+
+    handle_admin_response(resp).await
+}
+
+/// Revoke an invite code
+pub async fn admin_revoke_invite(client: &Client, code: &str) -> Result<Value> {
+    let base_url =
+        env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+
+    let resp = client
+        .delete(format!("{}/admin/invites/{}", base_url, code))
+        .timeout(Duration::from_secs(30))
         .send()
         .await?;
 
@@ -425,6 +485,38 @@ pub async fn delete_user_submission(client: &Client, submission_id: i64) -> Resu
 
     let resp = client
         .delete(format!("{}/user/submissions/{}", base_url, submission_id))
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let error_text = resp.text().await?;
+        let detail = serde_json::from_str::<Value>(&error_text)
+            .ok()
+            .and_then(|v| v.get("detail").and_then(|d| d.as_str()).map(str::to_string));
+        return Err(anyhow!(
+            "Server returned status {}: {}",
+            status,
+            detail.unwrap_or(error_text)
+        ));
+    }
+
+    resp.json()
+        .await
+        .map_err(|e| anyhow!("Failed to parse response: {}", e))
+}
+
+/// Claim an invite code to join closed leaderboard(s)
+pub async fn join_with_invite(client: &Client, code: &str) -> Result<Value> {
+    let base_url =
+        env::var("POPCORN_API_URL").map_err(|_| anyhow!("POPCORN_API_URL is not set"))?;
+
+    let payload = serde_json::json!({ "code": code });
+
+    let resp = client
+        .post(format!("{}/user/join", base_url))
+        .json(&payload)
         .timeout(Duration::from_secs(30))
         .send()
         .await?;

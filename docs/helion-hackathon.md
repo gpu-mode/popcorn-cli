@@ -25,7 +25,10 @@ curl -fsSL https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/install.s
 # 2. Register
 popcorn register discord
 
-# 3. Setup a project (downloads the submission template for you)
+# 3. Join the challenge with your invite code
+popcorn join <YOUR_INVITE_CODE>
+
+# 4. Setup a project (downloads the submission template for you)
 popcorn setup
 # Select "Helion Kernel Challenge", then pick a problem and GPU
 ```
