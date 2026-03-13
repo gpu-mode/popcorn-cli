@@ -251,16 +251,9 @@ The B200 instances also ship with **nvtriton**, NVIDIA's extended Triton compile
 | **Tunables** | `num_warps`, `num_stages` (1-8), `maxnreg` | `num_ctas` (1-2), `num_stages` (1-10), `occupancy` (1-8) |
 | **Helion backend** | `triton` (default) | `tileir` |
 
-**Step 1: Enable TileIR.** Set both environment variables **before** importing Triton or Helion:
+**Step 1: Enable TileIR and autotune.** Set the env vars before importing Helion, then autotune as usual. Helion automatically adjusts the search space — it searches over `num_ctas` and `occupancy` instead of `num_warps` and `maxnreg`.
 
-```bash
-export ENABLE_TILE=1
-export HELION_BACKEND=tileir
-```
-
-Then autotune as usual. Helion automatically adjusts the search space for TileIR — it searches over `num_ctas` and `occupancy` instead of `num_warps` and `maxnreg`.
-
-**Step 2: Hardcode the TileIR config in your submission.** TileIR configs use `num_ctas` and `occupancy` instead of `num_warps`. Your submission also needs the env vars set before imports:
+**Step 2: Hardcode the TileIR config in your submission.** TileIR configs use `num_ctas` and `occupancy` instead of `num_warps`. The env vars must be set before imports:
 
 ```python
 import os
