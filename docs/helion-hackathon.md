@@ -18,6 +18,38 @@ Submit [Helion](https://github.com/pytorch/helion) kernels to the GPU MODE leade
 | 4 | `gated_deltanet_chunk_fwd_o` | Output computation for Gated DeltaNet |
 | 5 | `gated_deltanet_recompute_w_u` | WY-transform forward kernel for Gated DeltaNet |
 
+## Scoring
+
+### Point Allocation
+
+| Kernel | Correctness Points | Performance Points |
+|---|---|---|
+| **FP8 Quantization** | 100 | 0 (unscored) |
+| **Causal Depthwise 1D Convolution** | 100 | 1000 |
+| **Gated DeltaNet chunk\_fwd\_h** | 100 | 1000 |
+| **Gated DeltaNet chunk\_fwd\_o** | 100 | 1000 |
+| **Gated DeltaNet recompute\_w\_u** | 100 | 1000 |
+
+### Scoring Rules
+
+- **Performance Metric**: For each benchmark shape, the runtime is the geometric mean of 100 runs. The final runtime for a kernel is the geometric mean across all shapes, rounded to 4 significant figures.
+- **Ranking**: Participants are ranked per kernel by runtime (fastest = rank 1).
+- **Formula**: Score = CorrectnessPoints + (PerformancePoints × [1 − (rank - 1) / 10])
+  - CorrectnessPoints are earned if the submission passes all test input shapes.
+  - Only the top 10 performers per kernel (who pass all tests) can earn PerformancePoints.
+  - Rank 1 → 100% of PerformancePoints, Rank 2 → 90%, …, Rank 10 → 10%.
+- **Tiebreaker**: If two participants have the same metric value, the earlier submission wins.
+- **Test case shapes**: Provided in `task.yml`; input data sampled from a random distribution.
+
+**Total score** = Sum of points for all kernels.
+
+## Rules & Requirements
+
+- Kernel must pass all test input shapes (numerical accuracy within tolerance) with either default config or participant-provided config
+- All benchmark shapes must have their best configs submitted for that kernel to be scored
+- Implementations must use Helion DSL; `hl.inline_triton()`, `hl.triton_kernel()`, and `hl.inline_asm_elementwise()` are allowed but ≤30% LOC (excluding comments, measured after running `lint.sh fix`)
+- One submission per participant per kernel. In each submission: your Helion kernel implementation, one config (or use default config) per test input shape, and one best autotuned config per benchmark input shape
+
 ## Quick Start
 
 ```bash
@@ -283,6 +315,20 @@ Try both `ENABLE_TILE=0` and `ENABLE_TILE=1`, with and without ACFs, then submit
 - **Use `--mode test` first.** Verify correctness before submitting to the leaderboard. This saves time and leaderboard quota.
 - **Profile your kernels.** Use `--mode profile` to get Nsight Compute metrics and identify bottlenecks.
 - **One config per submission.** If Helion found different best configs for different benchmark shapes, pick the one that works best across all of them -- the leaderboard uses geometric mean across benchmarks.
+## Open-Ended Contribution Track
+
+In addition to the kernel competition, there is a separate open-ended contribution track. Participants can earn recognition and prizes for contributions to Helion beyond kernel implementations. This track is scored independently and does not affect kernel competition standings. Examples:
+
+| Contribution Type | Description |
+|---|---|
+| Autotuner Improvements | Enhancements to Helion's autotuning system |
+| Bug Fixes | Bug fixes in Helion |
+| Tooling/Infrastructure | Improvements to debugging, profiling, or developer experience |
+| Documentation | Significant documentation contributions |
+| Other Novel Contributions | Other impactful contributions at judges' discretion |
+
+Contributions are uncapped and evaluated by a panel of judges based on impact and quality. Prizes for this track are awarded separately from the kernel competition.
+
 ## Resources
 
 - [Helion Documentation](https://helionlang.com)
