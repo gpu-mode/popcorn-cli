@@ -50,6 +50,28 @@ Each problem directory (e.g. `causal_conv1d_py/`) contains:
 - `task.py` -- type definitions (`input_t`, `output_t`)
 - `task.yml` -- input shapes, test cases, and benchmark configs
 
+## Testing Locally
+
+You can test and benchmark your submissions locally on your own GPU without submitting to KernelBot. This is useful for fast iteration during development.
+
+From the `reference-kernels/problems/helion` directory, run:
+
+```bash
+# Correctness test (validates your kernel via CUDA graph capture)
+python eval.py test causal_conv1d_py/
+
+# Benchmark (measures kernel performance with L2 cache flushing)
+python eval.py benchmark causal_conv1d_py/
+
+# Both test and benchmark in one go
+python eval.py both causal_conv1d_py/
+
+# Profile (generates PyTorch profiler trace)
+python eval.py profile causal_conv1d_py/
+```
+
+Replace `causal_conv1d_py/` with any problem directory.
+
 ## Writing a Helion Submission
 
 Your submission must be a single Python file that defines `custom_kernel(data: input_t) -> output_t`. To use Helion, write a `@helion.kernel` decorated function and call it from `custom_kernel`.
