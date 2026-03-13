@@ -48,7 +48,7 @@ Submit [Helion](https://github.com/pytorch/helion) kernels to the GPU MODE leade
 - Kernel must pass all test input shapes (numerical accuracy within tolerance) with either default config or participant-provided config
 - All benchmark shapes must have their best configs submitted for that kernel to be scored
 - Implementations must use Helion DSL; `hl.inline_triton()`, `hl.triton_kernel()`, and `hl.inline_asm_elementwise()` are allowed but ≤30% LOC (excluding comments, measured after running `lint.sh fix`)
-- One submission per participant per kernel. In each submission: your Helion kernel implementation, one config (or use default config) per test input shape, and one best autotuned config per benchmark input shape
+- Unlimited submissions per participant per kernel. Only your best submission counts. Each submission should include: your Helion kernel implementation, one config (or use default config) per test input shape, and one best autotuned config per benchmark input shape
 
 ## Quick Start
 
