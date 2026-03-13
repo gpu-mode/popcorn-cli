@@ -108,7 +108,7 @@ Replace `causal_conv1d_py/` with any problem directory.
 
 Your submission must be a single Python file that defines `custom_kernel(data: input_t) -> output_t`. To use Helion, write a `@helion.kernel` decorated function and call it from `custom_kernel`.
 
-Here's an example structure for `causal_conv1d`:
+You can use a single config for all shapes, or use **per-shape configs** to optimize for each benchmark shape independently. The per-shape config pattern uses a factory function to create kernel variants with different configs, and dispatches based on input tensor shapes:
 
 ```python
 from task import input_t, output_t
@@ -116,30 +116,46 @@ import torch
 import helion
 import helion.language as hl
 
-@helion.kernel(config=helion.Config(
-    block_sizes=[64, 64],
-    num_warps=4,
-    num_stages=3,
-    # ... your tuned config here
-))
-def causal_conv1d_kernel(x: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor) -> torch.Tensor:
-    # Your Helion kernel implementation
-    ...
+# Map input shapes to optimized configs (autotune each shape locally)
+SHAPE_CONFIGS: dict[tuple, helion.Config] = {
+    (1, 768, 512, 4): helion.Config(block_sizes=[1, 32], num_warps=4, num_stages=3),
+    (1, 768, 2048, 4): helion.Config(block_sizes=[1, 64], num_warps=8, num_stages=2),
+    # ... one entry per benchmark shape
+}
+
+DEFAULT_CONFIG = helion.Config(block_sizes=[1, 8], num_warps=1, num_stages=1)
+
+
+def _make_kernel(config: helion.Config):
+    @helion.kernel(static_shapes=True, config=config)
+    def causal_conv1d_kernel(x: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor) -> torch.Tensor:
+        # Your Helion kernel implementation
+        ...
+
+    return causal_conv1d_kernel
+
+
+_KERNELS = {shape: _make_kernel(cfg) for shape, cfg in SHAPE_CONFIGS.items()}
+_DEFAULT_KERNEL = _make_kernel(DEFAULT_CONFIG)
+
 
 def custom_kernel(data: input_t) -> output_t:
     x, weight, bias = data
-    return causal_conv1d_kernel(x, weight, bias)
+    B, D, S = x.shape
+    W = weight.shape[1]
+    kernel = _KERNELS.get((B, D, S, W), _DEFAULT_KERNEL)
+    return kernel(x, weight, bias)
 ```
 
 ## Do NOT Autotune on KernelBot
 
-When submitting to KernelBot, you must hardcode a single config in your `@helion.kernel` decorator. Do **not** rely on Helion's autotuner at submission time.
+When submitting to KernelBot, you must hardcode configs in your `@helion.kernel` decorator. Do **not** rely on Helion's autotuner at submission time.
 
 KernelBot runs your submission on shared infrastructure with timeouts. If your kernel triggers autotuning (which can take 10+ minutes and hundreds of trial runs), your submission will time out and fail.
 
 ### The correct workflow
 
-1. **Autotune locally on your Nebius-provided B200 compute.** Run your Helion kernel without a fixed config (or with `autotune_effort="quick"`) to find the best configuration for the benchmark shapes.
+1. **Autotune locally on your Nebius-provided B200 compute.** Run your Helion kernel without a fixed config (or with `autotune_effort="quick"`) to find the best configuration for each benchmark shape.
 
 2. **Copy the best config** from the autotuner output. Helion prints something like:
    ```
@@ -147,22 +163,9 @@ KernelBot runs your submission on shared infrastructure with timeouts. If your k
        @helion.kernel(config=helion.Config(block_sizes=[64, 64, 64], ...))
    ```
 
-3. **Hardcode the config in your submission.** Pass it via `config=` in the `@helion.kernel` decorator:
-   ```python
-   @helion.kernel(config=helion.Config(
-       block_sizes=[64, 64, 64],
-       loop_orders=[[0, 1]],
-       num_warps=8,
-       num_stages=6,
-       indexing='block_ptr',
-       pid_type='flat',
-       # ... rest of your tuned config
-   ))
-   def my_kernel(...):
-       ...
-   ```
+3. **Hardcode the config in your submission.** Add each shape's best config to the `SHAPE_CONFIGS` dict (see the per-shape config pattern above). Repeat steps 1-3 for each benchmark shape in `task.yml`.
 
-4. **Submit the file** with the hardcoded config to KernelBot.
+4. **Submit the file** with the hardcoded configs to KernelBot.
 
 You can also use `autotune_effort="none"` during development to skip autotuning entirely and use the default config, but this will give worse performance.
 
