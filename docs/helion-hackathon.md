@@ -21,7 +21,6 @@ Submit [Helion](https://github.com/pytorch/helion) kernels to the GPU MODE leade
 ```bash
 # 1. Install popcorn-cli
 curl -fsSL https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/install.sh | bash
-ln -s popcorn-cli "$(dirname "$(which popcorn-cli)")/popcorn"
 
 # 2. Register
 popcorn register discord
