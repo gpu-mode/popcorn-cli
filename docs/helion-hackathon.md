@@ -193,22 +193,24 @@ popcorn submit causal_conv1d_py/submission.py --gpu B200_Nebius --leaderboard ca
 
 This returns GPU throughput, pipe utilization, and warp stall metrics, plus a downloadable `.ncu-rep` trace file you can open in the Nsight Compute GUI. See [profiling.md](profiling.md) for details on interpreting the output.
 
-## Using ACF Files (Booster Pack)
+## Optional: Extra Performance Knobs
 
-Each B200 instance comes with pre-tuned **PTXAS Advanced Controls Files (ACFs)** at `/opt/booster_pack/`. These are low-level NVIDIA PTX assembler configurations that can improve kernel performance beyond what Helion's standard autotuner finds.
+The sections below describe two **optional** techniques that can squeeze extra performance out of your kernels. Neither is required — you can place on the leaderboard without them. Try them after you have a working kernel with a tuned config.
+
+### ACF Files (Booster Pack)
+
+Each B200 instance has pre-tuned **PTXAS Advanced Controls Files (ACFs)** at `/opt/booster_pack/`. ACFs are low-level NVIDIA PTX assembler configurations that can improve performance beyond what Helion's standard autotuner finds. Available files:
 
 ```
 /opt/booster_pack/
-├── causal_conv_0.acf ... causal_conv_2.acf
-├── chunk_fwd_h_0.acf ... chunk_fwd_h_1.acf
-├── chunk_fwd_o_0.acf ... chunk_fwd_o_6.acf
-├── fp8_group_quant_0.acf ... fp8_group_quant_6.acf
-└── recompute_w_u_fwd_0.acf ... recompute_w_u_fwd_4.acf
+├── causal_conv_*.acf           (3 files)
+├── chunk_fwd_h_*.acf           (2 files)
+├── chunk_fwd_o_*.acf           (7 files)
+├── fp8_group_quant_*.acf       (7 files)
+└── recompute_w_u_fwd_*.acf     (5 files)
 ```
 
-### Using ACFs during autotuning
-
-Pass `autotune_search_acf` to the `@helion.kernel` decorator. Helion treats each ACF as another tunable parameter — every config candidate gets tried with each ACF file (plus the default `-O3` baseline):
+**Step 1: Autotune with ACFs.** Pass `autotune_search_acf` to include ACFs in the search space. Helion tries each ACF file (plus the default `-O3` baseline) as another tunable parameter:
 
 ```python
 from pathlib import Path
@@ -223,11 +225,9 @@ def my_kernel(...):
     ...
 ```
 
-> **Important:** `autotune_search_acf` only takes effect when the autotuner actually runs. If you set `autotune_effort="none"` or provide a fixed `config=`, the ACF list is ignored.
+> **Note:** `autotune_search_acf` only takes effect when the autotuner actually runs. It is ignored with `autotune_effort="none"` or a fixed `config=`.
 
-### Hardcoding an ACF in your submission
-
-After autotuning finds the best ACF, include it in your hardcoded config via `advanced_controls_file`. The autotuner prints the winning ACF path — copy it into your `Config`:
+**Step 2: Hardcode the best ACF in your submission.** After autotuning, look for the `advanced_controls_file` field in the best config and copy it:
 
 ```python
 @helion.kernel(config=helion.Config(
@@ -241,20 +241,9 @@ def my_kernel(...):
     ...
 ```
 
-This is the approach you should use for KernelBot submissions — a fixed config with a fixed ACF, no autotuning at runtime.
+### TileIR Backend
 
-### Recommended workflow
-
-1. **Autotune with ACFs locally** on your B200, using the matching `*_*.acf` files for your problem
-2. **Check the best config output** — look for the `advanced_controls_file` field
-3. **Hardcode both the config and ACF path** in your submission file
-4. **Verify** the ACF path (`/opt/booster_pack/...`) exists on B200 — it does on all hackathon instances
-
-## Using the TileIR Backend
-
-The B200 instances ship with **nvtriton**, NVIDIA's extended Triton compiler that includes a **TileIR** backend. TileIR is an alternative compilation pipeline that bypasses LLVM and compiles directly to CUBIN via NVIDIA's `tileiras` compiler. It can produce faster kernels on Blackwell (B200) GPUs.
-
-### ENABLE_TILE=0 vs ENABLE_TILE=1
+The B200 instances also ship with **nvtriton**, NVIDIA's extended Triton compiler that includes a **TileIR** backend — an alternative compilation pipeline that bypasses LLVM and compiles directly to CUBIN via NVIDIA's `tileiras` compiler.
 
 | | `ENABLE_TILE=0` (default) | `ENABLE_TILE=1` |
 |---|---|---|
@@ -262,29 +251,25 @@ The B200 instances ship with **nvtriton**, NVIDIA's extended Triton compiler tha
 | **Tunables** | `num_warps`, `num_stages` (1-8), `maxnreg` | `num_ctas` (1-2), `num_stages` (1-10), `occupancy` (1-8) |
 | **Helion backend** | `triton` (default) | `tileir` |
 
-### Enabling TileIR with Helion
-
-Set both environment variables **before** importing Triton or Helion:
+**Step 1: Enable TileIR.** Set both environment variables **before** importing Triton or Helion:
 
 ```bash
 export ENABLE_TILE=1
 export HELION_BACKEND=tileir
 ```
 
-Then write your kernel as usual. Helion automatically adjusts the autotuner search space for TileIR — it searches over `num_ctas` and `occupancy` instead of `num_warps` and `maxnreg`:
+Then autotune as usual. Helion automatically adjusts the search space for TileIR — it searches over `num_ctas` and `occupancy` instead of `num_warps` and `maxnreg`.
+
+**Step 2: Hardcode the TileIR config in your submission.** TileIR configs use `num_ctas` and `occupancy` instead of `num_warps`. Your submission also needs the env vars set before imports:
 
 ```python
-# With TileIR, the autotuner explores tileir-specific tunables
-@helion.kernel(static_shapes=True)
-def my_kernel(...):
-    ...
-```
+import os
+os.environ["ENABLE_TILE"] = "1"
+os.environ["HELION_BACKEND"] = "tileir"
 
-### Hardcoding a TileIR config in your submission
+import helion  # must be imported after setting env vars
+import helion.language as hl
 
-After autotuning with TileIR, hardcode the config as usual. TileIR configs use `num_ctas` and `occupancy` instead of `num_warps`:
-
-```python
 @helion.kernel(config=helion.Config(
     block_sizes=[64, 64],
     num_ctas=1,
@@ -296,19 +281,13 @@ def my_kernel(...):
     ...
 ```
 
-**Important:** Your submission still needs `ENABLE_TILE=1` and `HELION_BACKEND=tileir` at runtime. Add them at the top of your submission file:
+### Which combination should I use?
 
-```python
-import os
-os.environ["ENABLE_TILE"] = "1"
-os.environ["HELION_BACKEND"] = "tileir"
-
-import helion  # must be imported after setting env vars
-```
-
-### Which backend should I use?
-
-Try both. Autotune your kernel with the default Triton backend (`ENABLE_TILE=0`) and with TileIR (`ENABLE_TILE=1`), then submit whichever gives better benchmark numbers. TileIR can be significantly faster on B200 for some kernel patterns, but the default backend may win for others.
+Try all combinations and submit whichever gives the best benchmark numbers:
+- Default Triton backend without ACF
+- Default Triton backend with ACF
+- TileIR backend without ACF
+- TileIR backend with ACF
 
 ## Tips
 
