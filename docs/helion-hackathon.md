@@ -120,12 +120,12 @@ import helion.language as hl
 # Include all test and benchmark shapes from task.yml.
 SHAPE_CONFIGS: dict[tuple, helion.Config] = {
     # Test shapes
-    (1, 64, 64, 4): helion.Config(block_sizes=[1, 32], num_warps=4, num_stages=3),
-    (2, 128, 128, 4): helion.Config(block_sizes=[1, 32], num_warps=4, num_stages=3),
+    (1, 64, 64, 4): helion.Config(...),  # TODO: replace with default config or any config that passes correctness check
+    (2, 128, 128, 4): helion.Config(...),  # TODO: replace with default config or any config that passes correctness check
     # ... one entry per test shape
     # Benchmark shapes
-    (1, 768, 512, 4): helion.Config(block_sizes=[1, 32], num_warps=4, num_stages=3),
-    (1, 768, 2048, 4): helion.Config(block_sizes=[1, 64], num_warps=8, num_stages=2),
+    (1, 768, 512, 4): helion.Config(...),  # TODO: replace with your autotuned config
+    (1, 768, 2048, 4): helion.Config(...),  # TODO: replace with your autotuned config
     # ... one entry per benchmark shape
 }
 
@@ -156,21 +156,29 @@ When submitting to KernelBot, you must hardcode configs in your `@helion.kernel`
 
 KernelBot runs your submission on shared infrastructure with timeouts. If your kernel triggers autotuning (which can take 10+ minutes and hundreds of trial runs), your submission will time out and fail.
 
-### The correct workflow
+### Getting a default config (no autotuning)
+
+During early development, you can use `autotune_effort="none"` to skip autotuning and use Helion's default config. When you run the kernel, Helion prints the default config to stderr:
+
+```
+Using default config: @helion.kernel(config=helion.Config(block_sizes=[64, 64], num_warps=4, num_stages=1), static_shapes=True)
+```
+
+Copy the `helion.Config(...)` portion into your `SHAPE_CONFIGS` dict. The default config is usually good enough for test input shapes to pass correctness checks, but won't be competitive for benchmark shapes on the leaderboard.
+
+### Autotuning for benchmark shapes
 
 1. **Autotune locally on your Nebius-provided B200 compute.** Run your Helion kernel without a fixed config (or with `autotune_effort="quick"`) to find the best configuration for each benchmark shape.
 
-2. **Copy the best config** from the autotuner output. Helion prints something like:
+2. **Copy the best config** from the autotuner output. When autotuning completes, Helion prints:
    ```
    One can hardcode the best config and skip autotuning with:
-       @helion.kernel(config=helion.Config(block_sizes=[64, 64, 64], ...))
+       @helion.kernel(config=helion.Config(block_sizes=[64, 64, 64], num_warps=8, num_stages=3))
    ```
 
-3. **Hardcode the config in your submission.** Add each shape's best config to the `SHAPE_CONFIGS` dict (see the per-shape config pattern above). Repeat steps 1-3 for each benchmark shape in `task.yml`.
+3. **Hardcode the config in your submission.** Copy the `helion.Config(...)` from step 2 into the corresponding benchmark shape entry in `SHAPE_CONFIGS`. Repeat steps 1-3 for each benchmark shape in `task.yml`.
 
 4. **Submit the file** with the hardcoded configs to KernelBot.
-
-You can also use `autotune_effort="none"` during development to skip autotuning entirely and use the default config, but this will give worse performance.
 
 ## Submitting All 5 Problems
 
