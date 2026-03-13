@@ -250,6 +250,66 @@ This is the approach you should use for KernelBot submissions — a fixed config
 3. **Hardcode both the config and ACF path** in your submission file
 4. **Verify** the ACF path (`/opt/booster_pack/...`) exists on B200 — it does on all hackathon instances
 
+## Using the TileIR Backend
+
+The B200 instances ship with **nvtriton**, NVIDIA's extended Triton compiler that includes a **TileIR** backend. TileIR is an alternative compilation pipeline that bypasses LLVM and compiles directly to CUBIN via NVIDIA's `tileiras` compiler. It can produce faster kernels on Blackwell (B200) GPUs.
+
+### ENABLE_TILE=0 vs ENABLE_TILE=1
+
+| | `ENABLE_TILE=0` (default) | `ENABLE_TILE=1` |
+|---|---|---|
+| **Pipeline** | Triton IR → LLVM IR → PTX → CUBIN | Triton IR → TileIR → CUBIN (via `tileiras`) |
+| **Tunables** | `num_warps`, `num_stages` (1-8), `maxnreg` | `num_ctas` (1-2), `num_stages` (1-10), `occupancy` (1-8) |
+| **Helion backend** | `triton` (default) | `tileir` |
+
+### Enabling TileIR with Helion
+
+Set both environment variables **before** importing Triton or Helion:
+
+```bash
+export ENABLE_TILE=1
+export HELION_BACKEND=tileir
+```
+
+Then write your kernel as usual. Helion automatically adjusts the autotuner search space for TileIR — it searches over `num_ctas` and `occupancy` instead of `num_warps` and `maxnreg`:
+
+```python
+# With TileIR, the autotuner explores tileir-specific tunables
+@helion.kernel(static_shapes=True)
+def my_kernel(...):
+    ...
+```
+
+### Hardcoding a TileIR config in your submission
+
+After autotuning with TileIR, hardcode the config as usual. TileIR configs use `num_ctas` and `occupancy` instead of `num_warps`:
+
+```python
+@helion.kernel(config=helion.Config(
+    block_sizes=[64, 64],
+    num_ctas=1,
+    num_stages=5,
+    occupancy=4,
+    # ... rest of your tuned config
+))
+def my_kernel(...):
+    ...
+```
+
+**Important:** Your submission still needs `ENABLE_TILE=1` and `HELION_BACKEND=tileir` at runtime. Add them at the top of your submission file:
+
+```python
+import os
+os.environ["ENABLE_TILE"] = "1"
+os.environ["HELION_BACKEND"] = "tileir"
+
+import helion  # must be imported after setting env vars
+```
+
+### Which backend should I use?
+
+Try both. Autotune your kernel with the default Triton backend (`ENABLE_TILE=0`) and with TileIR (`ENABLE_TILE=1`), then submit whichever gives better benchmark numbers. TileIR can be significantly faster on B200 for some kernel patterns, but the default backend may win for others.
+
 ## Tips
 
 - **Iterate locally first.** Use your Nebius B200 to develop and autotune. Only submit to KernelBot once you have a hardcoded config that works.
