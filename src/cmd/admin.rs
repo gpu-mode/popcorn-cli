@@ -39,6 +39,26 @@ pub enum AdminAction {
         #[arg(long)]
         force: bool,
     },
+    /// Generate invite codes for leaderboard(s)
+    GenerateInvites {
+        /// Leaderboard names to grant access to
+        #[arg(long, required = true, num_args = 1..)]
+        leaderboards: Vec<String>,
+
+        /// Number of invite codes to generate (1-10000)
+        #[arg(long, default_value = "1")]
+        count: u32,
+    },
+    /// List invite codes for a leaderboard
+    ListInvites {
+        /// Leaderboard name
+        leaderboard: String,
+    },
+    /// Revoke an invite code
+    RevokeInvite {
+        /// The invite code to revoke
+        code: String,
+    },
     /// Update problems from a GitHub repository (mirrors Discord /admin update-problems)
     UpdateProblems {
         /// Problem set name (e.g., "nvidia", "pmpp_v2"). If not specified, updates all.
@@ -56,6 +76,10 @@ pub enum AdminAction {
         /// Force update even if task definition changed significantly
         #[arg(long)]
         force: bool,
+
+        /// Set leaderboard visibility to closed (requires invite to access)
+        #[arg(long)]
+        closed: bool,
     },
 }
 
@@ -108,20 +132,101 @@ pub async fn handle_admin(action: AdminAction) -> Result<()> {
             println!("Deleted leaderboard '{}'", name);
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
+        AdminAction::GenerateInvites {
+            leaderboards,
+            count,
+        } => {
+            let result = service::admin_generate_invites(&client, &leaderboards, count).await?;
+            let codes = result["codes"].as_array().map(|arr| arr.len()).unwrap_or(0);
+            let lbs = result["leaderboards"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .unwrap_or_default();
+            println!("Generated {} invite code(s) for: {}", codes, lbs);
+            if let Some(arr) = result["codes"].as_array() {
+                for code in arr {
+                    println!("  {}", code.as_str().unwrap_or("???"));
+                }
+            }
+        }
+        AdminAction::ListInvites { leaderboard } => {
+            let result = service::admin_list_invites(&client, &leaderboard).await?;
+            let invites = result["invites"].as_array();
+            match invites {
+                Some(arr) if arr.is_empty() => {
+                    println!("No invites for '{}'", leaderboard);
+                }
+                Some(arr) => {
+                    let claimed = arr
+                        .iter()
+                        .filter(|i| i["user_id"].as_str().is_some())
+                        .count();
+                    println!(
+                        "Invites for '{}': {} total, {} claimed, {} unclaimed\n",
+                        leaderboard,
+                        arr.len(),
+                        claimed,
+                        arr.len() - claimed,
+                    );
+                    let header = format!(
+                        "{:<26} {:<16} {:<20} {}",
+                        "CODE", "STATUS", "CLAIMED BY", "CREATED"
+                    );
+                    println!("{header}");
+                    println!("{}", "-".repeat(82));
+                    for invite in arr {
+                        let code = invite["code"].as_str().unwrap_or("???");
+                        let user = invite["user_name"]
+                            .as_str()
+                            .or_else(|| invite["user_id"].as_str());
+                        let status = if user.is_some() {
+                            "claimed"
+                        } else {
+                            "unclaimed"
+                        };
+                        let user_display = user.unwrap_or("-");
+                        let created = invite["created_at"].as_str().unwrap_or("-");
+                        println!(
+                            "{:<26} {:<16} {:<20} {}",
+                            code, status, user_display, created,
+                        );
+                    }
+                }
+                None => {
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                }
+            }
+        }
+        AdminAction::RevokeInvite { code } => {
+            let result = service::admin_revoke_invite(&client, &code).await?;
+            let was_claimed = result["was_claimed"].as_bool().unwrap_or(false);
+            println!(
+                "Revoked invite code '{}' (was {})",
+                code,
+                if was_claimed { "claimed" } else { "unclaimed" }
+            );
+        }
         AdminAction::UpdateProblems {
             problem_set,
             repository,
             branch,
             force,
+            closed,
         } => {
             println!(
-                "Updating problems from {}/tree/{}{}...",
+                "Updating problems from {}/tree/{}{}{}...",
                 repository,
                 branch,
                 problem_set
                     .as_ref()
                     .map(|ps| format!(" (problem set: {})", ps))
-                    .unwrap_or_default()
+                    .unwrap_or_default(),
+                if closed { " (closed)" } else { "" },
             );
             let result = service::admin_update_problems(
                 &client,
@@ -129,6 +234,7 @@ pub async fn handle_admin(action: AdminAction) -> Result<()> {
                 &repository,
                 &branch,
                 force,
+                closed,
             )
             .await?;
 

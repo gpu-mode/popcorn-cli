@@ -154,6 +154,11 @@ popcorn admin create-leaderboard <dir> # Create leaderboard from problem directo
 popcorn admin delete-leaderboard <name>        # Delete a leaderboard
 popcorn admin delete-leaderboard <name> --force # Force delete with submissions
 
+# Invite management
+popcorn admin generate-invites --leaderboards lb1 lb2 --count 5  # Generate invite codes
+popcorn admin list-invites <leaderboard>                          # List invites for a leaderboard
+popcorn admin revoke-invite <code>                                # Revoke an invite code
+
 # Update problems from GitHub
 popcorn admin update-problems
 popcorn admin update-problems --problem-set nvidia --force

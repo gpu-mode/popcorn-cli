@@ -10,6 +10,8 @@ mod setup;
 mod submissions;
 mod submit;
 
+use crate::service;
+
 pub use admin::AdminAction;
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -138,6 +140,11 @@ enum Commands {
         #[arg(long)]
         no_tui: bool,
     },
+    /// Join a closed leaderboard using an invite code
+    Join {
+        /// The invite code
+        code: String,
+    },
     /// Admin commands (requires POPCORN_ADMIN_TOKEN env var)
     Admin {
         #[command(subcommand)]
@@ -208,6 +215,29 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 )
                 .await
             }
+        }
+        Some(Commands::Join { code }) => {
+            let config = load_config()?;
+            let cli_id = config.cli_id.ok_or_else(|| {
+                anyhow!(
+                    "cli_id not found in config file ({}). Please run `popcorn register` first.",
+                    get_config_path()
+                        .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
+                )
+            })?;
+            let client = service::create_client(Some(cli_id))?;
+            let result = service::join_with_invite(&client, &code).await?;
+            let leaderboards = result["leaderboards"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .unwrap_or_default();
+            println!("Joined leaderboard(s): {}", leaderboards);
+            Ok(())
         }
         Some(Commands::Admin { action }) => admin::handle_admin(action).await,
         Some(Commands::Submissions { action }) => {
