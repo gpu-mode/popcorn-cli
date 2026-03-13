@@ -197,7 +197,7 @@ This returns GPU throughput, pipe utilization, and warp stall metrics, plus a do
 
 The sections below describe two **optional** techniques that can squeeze extra performance out of your kernels. Neither is required — you can place on the leaderboard without them. Try them after you have a working kernel with a tuned config.
 
-### ACF Files (Booster Pack)
+### ACF Files
 
 Each B200 instance has pre-tuned **PTXAS Advanced Controls Files (ACFs)** at `/opt/booster_pack/`. ACFs are low-level NVIDIA PTX assembler configurations that can improve performance beyond what Helion's standard autotuner finds. Available files:
 
