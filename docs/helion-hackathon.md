@@ -179,10 +179,6 @@ Each B200 instance comes with pre-tuned **PTXAS Advanced Controls Files (ACFs)**
 └── recompute_w_u_fwd_0.acf ... recompute_w_u_fwd_4.acf
 ```
 
-### How ACFs work
-
-ACFs are passed to NVIDIA's `ptxas` assembler via `--apply-controls` during Triton compilation. They control low-level instruction scheduling and register allocation decisions that Helion's Python-level config cannot reach.
-
 ### Using ACFs during autotuning
 
 Pass `autotune_search_acf` to the `@helion.kernel` decorator. Helion treats each ACF as another tunable parameter — every config candidate gets tried with each ACF file (plus the default `-O3` baseline):
