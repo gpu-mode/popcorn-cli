@@ -1,5 +1,7 @@
 # Helion Kernel Challenge
 
+Run all the below instructions on your local laptop, you don't need to login to a GPU to make submissions to KernelBot.
+
 Submit [Helion](https://github.com/pytorch/helion) kernels to the GPU MODE leaderboard on B200 GPUs. The challenge has 5 problems based on production LLM kernel patterns.
 
 **Deadline:** March 14, 2026
