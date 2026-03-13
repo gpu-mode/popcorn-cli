@@ -108,7 +108,7 @@ Replace `causal_conv1d_py/` with any problem directory.
 
 Your submission must be a single Python file that defines `custom_kernel(data: input_t) -> output_t`. To use Helion, write a `@helion.kernel` decorated function and call it from `custom_kernel`.
 
-You can use a single config for all shapes, or use **per-shape configs** to optimize for each benchmark shape independently. The per-shape config pattern uses a factory function to create kernel variants with different configs, and dispatches based on input tensor shapes:
+Use **per-shape configs** to optimize for each benchmark shape independently. The per-shape config pattern uses a factory function to create kernel variants with different configs, and dispatches based on input tensor shapes:
 
 ```python
 from task import input_t, output_t
@@ -328,7 +328,7 @@ Try both `ENABLE_TILE=0` and `ENABLE_TILE=1`, with and without ACFs, then submit
 - **Check the reference.** Each `reference.py` shows the baseline implementation you're trying to beat. Understanding it helps you write a better kernel.
 - **Use `--mode test` first.** Verify correctness before submitting to the leaderboard. This saves time and leaderboard quota.
 - **Profile your kernels.** Use `--mode profile` to get Nsight Compute metrics and identify bottlenecks.
-- **One config per submission.** If Helion found different best configs for different benchmark shapes, pick the one that works best across all of them -- the leaderboard uses geometric mean across benchmarks.
+- **One config per shape.** Use the per-shape config pattern to provide an optimized config for each benchmark shape in `task.yml`.
 ## Open-Ended Contribution Track
 
 In addition to the kernel competition, there is a separate open-ended contribution track. Participants can earn recognition and prizes for contributions to Helion beyond kernel implementations. This track is scored independently and does not affect kernel competition standings. Examples:
