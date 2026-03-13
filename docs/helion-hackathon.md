@@ -166,6 +166,67 @@ popcorn submit causal_conv1d_py/submission.py --gpu B200_Nebius --leaderboard ca
 
 This returns GPU throughput, pipe utilization, and warp stall metrics, plus a downloadable `.ncu-rep` trace file you can open in the Nsight Compute GUI. See [profiling.md](profiling.md) for details on interpreting the output.
 
+## Using ACF Files (Booster Pack)
+
+Each B200 instance comes with pre-tuned **PTXAS Advanced Controls Files (ACFs)** at `/opt/booster_pack/`. These are low-level NVIDIA PTX assembler configurations that can improve kernel performance beyond what Helion's standard autotuner finds.
+
+```
+/opt/booster_pack/
+├── causal_conv_0.acf ... causal_conv_2.acf
+├── chunk_fwd_h_0.acf ... chunk_fwd_h_1.acf
+├── chunk_fwd_o_0.acf ... chunk_fwd_o_6.acf
+├── fp8_group_quant_0.acf ... fp8_group_quant_6.acf
+└── recompute_w_u_fwd_0.acf ... recompute_w_u_fwd_4.acf
+```
+
+### How ACFs work
+
+ACFs are passed to NVIDIA's `ptxas` assembler via `--apply-controls` during Triton compilation. They control low-level instruction scheduling and register allocation decisions that Helion's Python-level config cannot reach.
+
+### Using ACFs during autotuning
+
+Pass `autotune_search_acf` to the `@helion.kernel` decorator. Helion treats each ACF as another tunable parameter — every config candidate gets tried with each ACF file (plus the default `-O3` baseline):
+
+```python
+from pathlib import Path
+
+acf_files = sorted(str(p) for p in Path("/opt/booster_pack").glob("causal_conv_*.acf"))
+
+@helion.kernel(
+    static_shapes=True,
+    autotune_search_acf=acf_files,
+)
+def my_kernel(...):
+    ...
+```
+
+> **Important:** `autotune_search_acf` only takes effect when the autotuner actually runs. If you set `autotune_effort="none"` or provide a fixed `config=`, the ACF list is ignored.
+
+### Hardcoding an ACF in your submission
+
+After autotuning finds the best ACF, include it in your hardcoded config via `advanced_controls_file`. The autotuner prints the winning ACF path — copy it into your `Config`:
+
+```python
+@helion.kernel(config=helion.Config(
+    advanced_controls_file="/opt/booster_pack/causal_conv_0.acf",
+    block_sizes=[1, 512],
+    num_warps=4,
+    num_stages=3,
+    # ... rest of your tuned config
+))
+def my_kernel(...):
+    ...
+```
+
+This is the approach you should use for KernelBot submissions — a fixed config with a fixed ACF, no autotuning at runtime.
+
+### Recommended workflow
+
+1. **Autotune with ACFs locally** on your B200, using the matching `*_*.acf` files for your problem
+2. **Check the best config output** — look for the `advanced_controls_file` field
+3. **Hardcode both the config and ACF path** in your submission file
+4. **Verify** the ACF path (`/opt/booster_pack/...`) exists on B200 — it does on all hackathon instances
+
 ## Tips
 
 - **Iterate locally first.** Use your Nebius B200 to develop and autotune. Only submit to KernelBot once you have a hardcoded config that works.
