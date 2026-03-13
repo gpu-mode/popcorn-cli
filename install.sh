@@ -24,20 +24,24 @@ fi
 OS=""
 ARCH=""
 BINARY_NAME=""
+SYMLINK_NAME=""
 EXTENSION=""
 
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     OS="linux"
     EXTENSION=".tar.gz"
     BINARY_NAME="popcorn-cli"
+    SYMLINK_NAME="popcorn"
 elif [[ "$OSTYPE" == "darwin"* ]]; then
     OS="macos"
     EXTENSION=".tar.gz"
     BINARY_NAME="popcorn-cli"
+    SYMLINK_NAME="popcorn"
 elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]] || [[ "$OSTYPE" == "cygwin" ]]; then
     OS="windows"
     EXTENSION=".zip"
     BINARY_NAME="popcorn-cli.exe"
+    SYMLINK_NAME="popcorn.exe"
 else
     echo "❌ Unsupported operating system: $OSTYPE"
     exit 1
@@ -81,6 +85,15 @@ if [[ -f "$BINARY_NAME" ]]; then
     chmod +x "$BINARY_NAME"
     mv "$BINARY_NAME" "$INSTALL_DIR/"
     echo "✅ Binary installed to $INSTALL_DIR/$BINARY_NAME"
+    # Create 'popcorn' alias so users can run 'popcorn' instead of 'popcorn-cli'
+    if [[ -n "$SYMLINK_NAME" ]]; then
+        if [[ "$OS" == "windows" ]]; then
+            cp "$INSTALL_DIR/$BINARY_NAME" "$INSTALL_DIR/$SYMLINK_NAME"
+        else
+            ln -sf "$INSTALL_DIR/$BINARY_NAME" "$INSTALL_DIR/$SYMLINK_NAME"
+        fi
+        echo "✅ Created alias: $SYMLINK_NAME -> $BINARY_NAME"
+    fi
 else
     echo "❌ Binary not found after extraction"
     exit 1
