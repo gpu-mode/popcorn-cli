@@ -52,6 +52,7 @@ curl -fsSL https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/install.s
 
 # 2. Register
 popcorn register discord
+# Please click on the link to authenticate on Discord
 
 # 3. Join the challenge with your invite code
 popcorn join <YOUR_INVITE_CODE>
