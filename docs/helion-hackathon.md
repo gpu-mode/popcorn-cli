@@ -32,7 +32,7 @@ Submit [Helion](https://github.com/pytorch/helion) kernels to the GPU MODE leade
 
 ### Scoring Rules
 
-- **Performance Metric**: For each benchmark shape, the runtime is the geometric mean of 100 runs. The final runtime for a kernel is the geometric mean across all shapes, rounded to 4 significant figures.
+- **Performance Metric**: For each benchmark shape, the kernel is captured in a CUDA graph and replayed with L2 cache clearing before each invocation. The graph unrolls enough calls to fill ~100ms of GPU time, and this is repeated 10 times. The runtime is the arithmetic mean of those 10 measurements.
 - **Ranking**: Participants are ranked per kernel by runtime (fastest = rank 1).
 - **Formula**: Score = CorrectnessPoints + (PerformancePoints × [1 − (rank - 1) / 10])
   - CorrectnessPoints are earned if the submission passes all test input shapes.
