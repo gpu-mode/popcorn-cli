@@ -1,9 +1,10 @@
 use anyhow::{anyhow, Result};
+use crossterm::style::Stylize;
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
 use std::path::PathBuf;
 
-use crate::service; // Assuming service::create_client is needed
+use crate::service;
 
 // Configuration structure
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -50,32 +51,46 @@ struct AuthInitResponse {
 
 // Function to handle the login logic
 pub async fn run_auth(reset: bool, auth_provider: &str) -> Result<()> {
-    println!("Attempting authentication via {}...", auth_provider);
+    println!(
+        "{} Authenticating via {}...",
+        "●".cyan(),
+        auth_provider.bold()
+    );
 
-    let popcorn_api_url = std::env::var("POPCORN_API_URL")
-        .map_err(|_| anyhow!("POPCORN_API_URL environment variable not set"))?;
+    let popcorn_api_url = std::env::var("POPCORN_API_URL").map_err(|_| {
+        anyhow!(
+            "{} POPCORN_API_URL environment variable not set",
+            "error:".red().bold()
+        )
+    })?;
 
     let client = service::create_client(None)?;
 
     let init_url = format!("{}/auth/init?provider={}", popcorn_api_url, auth_provider);
-    println!("Requesting CLI ID from {}", init_url);
 
-    let init_resp = client.get(&init_url).send().await?;
+    let init_resp = client.get(&init_url).send().await.map_err(|e| {
+        anyhow!(
+            "{} Could not reach auth server: {}",
+            "error:".red().bold(),
+            e
+        )
+    })?;
 
     let status = init_resp.status();
 
     if !status.is_success() {
         let error_text = init_resp.text().await?;
-        return Err(anyhow!(
-            "Failed to initialize auth ({}): {}",
-            status,
+        eprintln!(
+            "{} Failed to initialize auth ({}): {}",
+            "error:".red().bold(),
+            status.to_string().red(),
             error_text
-        ));
+        );
+        return Err(anyhow!("Authentication initialization failed"));
     }
 
     let auth_init_data: AuthInitResponse = init_resp.json().await?;
     let cli_id = auth_init_data.state;
-    println!("Received CLI ID: {}", cli_id);
 
     let state_json = serde_json::json!({
         "cli_id": cli_id,
@@ -99,41 +114,57 @@ pub async fn run_auth(reset: bool, auth_provider: &str) -> Result<()> {
             )
         }
         _ => {
+            eprintln!(
+                "{} Unsupported authentication provider: {}",
+                "error:".red().bold(),
+                auth_provider.yellow()
+            );
             return Err(anyhow!(
                 "Unsupported authentication provider: {}",
                 auth_provider
-            ))
+            ));
         }
     };
 
     println!(
-        "\n>>> Please open the following URL in your browser to log in via {}:",
-        auth_provider
+        "\n  {} Open this URL to log in via {}:\n",
+        "▸".bold(),
+        auth_provider.bold()
     );
-    println!("{}", auth_url);
-    println!("\nWaiting for you to complete the authentication in your browser...");
-    println!(
-        "After successful authentication with {}, the CLI ID will be saved.",
-        auth_provider
-    );
+    println!("  {}\n", auth_url.as_str().underlined().cyan());
 
     if webbrowser::open(&auth_url).is_err() {
         println!(
-            "Could not automatically open the browser. Please copy the URL above and paste it manually."
+            "  {} Could not open browser automatically — please copy the link above.",
+            "!".yellow().bold()
+        );
+    } else {
+        println!(
+            "  {} Browser opened. Complete the login there.",
+            "✓".green().bold()
         );
     }
+
+    println!(
+        "  {} Waiting for authentication to complete...\n",
+        "…".dark_grey()
+    );
 
     // Save the cli_id to config file optimistically
     let mut config = load_config().unwrap_or_default();
     config.cli_id = Some(cli_id.clone());
     save_config(&config)?;
 
+    let config_path = get_config_path()?.display().to_string();
     println!(
-        "\nSuccessfully initiated authentication. Your CLI ID ({}) has been saved to {}. To use the CLI on different machines, you can copy the config file.",
-        cli_id,
-        get_config_path()?.display()
+        "  {} Authentication initiated! CLI ID saved to {}",
+        "✓".green().bold(),
+        config_path.underlined()
     );
-    println!("You can now use other commands that require authentication.");
+    println!(
+        "  {} You can now use commands that require authentication.\n",
+        "●".cyan()
+    );
 
     Ok(())
 }
