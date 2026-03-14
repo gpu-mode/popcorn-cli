@@ -262,15 +262,28 @@ pub async fn run_setup() -> Result<()> {
     )
     .await?;
 
-    // Write scaffolding files
-    let popcorn_dir = cwd.join(".popcorn");
+    // Create a unique project folder for this kernel
+    let project_dir = unique_folder_name(&cwd, &chosen_problem.directory);
+    fs::create_dir_all(&project_dir).with_context(|| {
+        format!(
+            "Failed to create project directory at {}",
+            project_dir.to_string_lossy()
+        )
+    })?;
+    println!(
+        "\nCreated project folder: {}",
+        relative_display(&cwd, &project_dir)
+    );
+
+    // Write scaffolding files into the project folder
+    let popcorn_dir = project_dir.join(".popcorn");
     let skill_dir = popcorn_dir.join("skills").join(SKILL_NAME);
     let skill_path = skill_dir.join("SKILL.md");
     let native_skill_dir = popcorn_dir.join("skills").join(NATIVE_SKILL_NAME);
     let native_skill_path = native_skill_dir.join("SKILL.md");
     let manifest_path = popcorn_dir.join("setup.json");
-    let submission_path = cwd.join(SUBMISSION_FILENAME);
-    let agents_path = cwd.join("AGENTS.md");
+    let submission_path = project_dir.join(SUBMISSION_FILENAME);
+    let agents_path = project_dir.join("AGENTS.md");
 
     fs::create_dir_all(&skill_dir).with_context(|| {
         format!(
@@ -313,11 +326,12 @@ pub async fn run_setup() -> Result<()> {
     let agents_md = build_agents_markdown(&skill_path, &native_skill_path);
     let agents_status = write_text_file(&agents_path, &agents_md, true)?;
 
-    let codex_link_status = create_agent_skill_view(&cwd, "codex", &skill_dir, true)?;
-    let claude_link_status = create_agent_skill_view(&cwd, "claude", &skill_dir, true)?;
-    let codex_native_link_status = create_agent_skill_view(&cwd, "codex", &native_skill_dir, true)?;
+    let codex_link_status = create_agent_skill_view(&project_dir, "codex", &skill_dir, true)?;
+    let claude_link_status = create_agent_skill_view(&project_dir, "claude", &skill_dir, true)?;
+    let codex_native_link_status =
+        create_agent_skill_view(&project_dir, "codex", &native_skill_dir, true)?;
     let claude_native_link_status =
-        create_agent_skill_view(&cwd, "claude", &native_skill_dir, true)?;
+        create_agent_skill_view(&project_dir, "claude", &native_skill_dir, true)?;
 
     let submission_status = write_text_file(&submission_path, &submission_content, true)?;
 
@@ -344,27 +358,42 @@ pub async fn run_setup() -> Result<()> {
     println!(
         "{} {}",
         codex_link_status.label(),
-        relative_display(&cwd, &cwd.join(".codex").join("skills").join(SKILL_NAME))
+        relative_display(
+            &cwd,
+            &project_dir.join(".codex").join("skills").join(SKILL_NAME)
+        )
     );
     println!(
         "{} {}",
         codex_native_link_status.label(),
         relative_display(
             &cwd,
-            &cwd.join(".codex").join("skills").join(NATIVE_SKILL_NAME)
+            &project_dir
+                .join(".codex")
+                .join("skills")
+                .join(NATIVE_SKILL_NAME)
         )
     );
     println!(
         "{} {}",
         claude_link_status.label(),
-        relative_display(&cwd, &cwd.join(".claude").join("skills").join(SKILL_NAME))
+        relative_display(
+            &cwd,
+            &project_dir
+                .join(".claude")
+                .join("skills")
+                .join(SKILL_NAME)
+        )
     );
     println!(
         "{} {}",
         claude_native_link_status.label(),
         relative_display(
             &cwd,
-            &cwd.join(".claude").join("skills").join(NATIVE_SKILL_NAME)
+            &project_dir
+                .join(".claude")
+                .join("skills")
+                .join(NATIVE_SKILL_NAME)
         )
     );
     println!(
@@ -374,6 +403,21 @@ pub async fn run_setup() -> Result<()> {
     );
 
     Ok(())
+}
+
+fn unique_folder_name(parent: &Path, base_name: &str) -> PathBuf {
+    let candidate = parent.join(base_name);
+    if !candidate.exists() {
+        return candidate;
+    }
+    let mut n = 1;
+    loop {
+        let candidate = parent.join(format!("{}-{}", base_name, n));
+        if !candidate.exists() {
+            return candidate;
+        }
+        n += 1;
+    }
 }
 
 fn relative_display(cwd: &Path, target: &Path) -> String {
