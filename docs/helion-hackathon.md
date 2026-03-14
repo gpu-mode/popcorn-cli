@@ -67,7 +67,7 @@ popcorn setup
 # Select "Helion Kernel Challenge", then pick a problem and GPU
 ```
 
-`popcorn setup` fetches the latest problems from reference-kernels, downloads the submission template with `#!POPCORN` directives pre-filled, and scaffolds agent skills for Codex/Claude Code.
+`popcorn setup` fetches the latest problems from reference-kernels, creates a project folder named after the selected problem (e.g. `causal_conv1d_py/`), downloads the submission template with `#!POPCORN` directives pre-filled, and scaffolds agent skills for Codex/Claude Code. If a folder with that name already exists, a `-N` suffix is appended (e.g. `causal_conv1d_py-1/`).
 
 Alternatively, you can clone the full reference-kernels repo to browse all problems locally:
 

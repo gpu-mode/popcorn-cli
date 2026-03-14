@@ -70,14 +70,14 @@ We regularly run competitions with clear due dates but for beginners we will alw
 
 ### Setup
 
-Bootstrap a project with Popcorn skill scaffolding and a submission template. You can overwrite existing files with `--force`.
+Bootstrap a project with Popcorn skill scaffolding and a submission template.
 
 ```bash
-# Create project skill scaffolding + submission.py
+# Create a project folder with skill scaffolding + submission.py
 popcorn setup
 ```
 
-This will create a new agent skill based on the [templates](templates/setup) and add it to your `.claude/skills` or `.codex/skills` directory.
+This will create a new folder named after the selected problem (e.g. `softmax/`), containing a `submission.py` template and agent skills in `.claude/skills` and `.codex/skills`. If a folder with that name already exists, a `-N` suffix is appended (e.g. `softmax-1/`).
 
 ### Submit
 
