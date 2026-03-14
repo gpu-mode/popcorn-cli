@@ -133,7 +133,10 @@ pub async fn run_auth(reset: bool, auth_provider: &str) -> Result<()> {
     );
     println!("  {}\n", auth_url.as_str().underlined().cyan());
 
+    let mut browser_failed = false;
+
     if webbrowser::open(&auth_url).is_err() {
+        browser_failed = true;
         println!(
             "  {} Could not open browser automatically — please copy the link above.",
             "!".yellow().bold()
@@ -156,15 +159,24 @@ pub async fn run_auth(reset: bool, auth_provider: &str) -> Result<()> {
     save_config(&config)?;
 
     let config_path = get_config_path()?.display().to_string();
-    println!(
-        "  {} Authentication initiated! CLI ID saved to {}",
-        "✓".green().bold(),
-        config_path.underlined()
-    );
-    println!(
-        "  {} You can now use commands that require authentication.\n",
-        "●".cyan()
-    );
+
+    if !browser_failed {
+        println!(
+            "  {} Authentication initiated! CLI ID saved to {}",
+            "✓".green().bold(),
+            config_path.underlined()
+        );
+
+        println!(
+            "  {} You can now use commands that require authentication.\n",
+            "●".cyan()
+        );
+    } else {
+        println!(
+            "{} You need to open the browser URL above to complete the authentication. After that, you can use the CLI as normal.",
+            "?".yellow().bold(),
+        );
+    }
 
     Ok(())
 }
