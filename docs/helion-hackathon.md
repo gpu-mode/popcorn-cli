@@ -12,8 +12,8 @@ Submit [Helion](https://github.com/pytorch/helion) kernels to the GPU MODE leade
 
 | # | Leaderboard Name | Description |
 |---|-----------------|-------------|
-| 1 | `causal_conv1d` | Causal depthwise 1D convolution (Mamba/Mamba-2) |
-| 2 | `fp8_quant` | Per-token-group FP8 E4M3 quantization (DeepSeek-V3, Llama 3, Qwen3) |
+| 1 | `fp8_quant` | Per-token-group FP8 E4M3 quantization (DeepSeek-V3, Llama 3, Qwen3) |
+| 2 | `causal_conv1d` | Causal depthwise 1D convolution (Mamba/Mamba-2) |
 | 3 | `gated_deltanet_chunk_fwd_h` | Inter-chunk state recurrence for Gated DeltaNet |
 | 4 | `gated_deltanet_chunk_fwd_o` | Output computation for Gated DeltaNet |
 | 5 | `gated_deltanet_recompute_w_u` | WY-transform forward kernel for Gated DeltaNet |
