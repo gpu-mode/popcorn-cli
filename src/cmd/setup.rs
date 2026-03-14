@@ -379,10 +379,7 @@ pub async fn run_setup() -> Result<()> {
         claude_link_status.label(),
         relative_display(
             &cwd,
-            &project_dir
-                .join(".claude")
-                .join("skills")
-                .join(SKILL_NAME)
+            &project_dir.join(".claude").join("skills").join(SKILL_NAME)
         )
     );
     println!(
