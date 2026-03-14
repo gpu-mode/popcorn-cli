@@ -334,7 +334,7 @@ Try both `ENABLE_TILE=0` and `ENABLE_TILE=1`, with and without ACFs, then submit
 
 - **Use a GitHub repo for your kernels.** Push your work to a private GitHub repo so you don't lose progress if the GPU machine goes offline or loses data.
 - **Use tmux for autotuning.** Autotuning can take a long time. Run it inside a `tmux` session so it survives SSH disconnections.
-- **Use spawn mode for autotuning.** By default, Helion's autotuner uses `fork` mode for precompilation. If you hit hangs or crashes during autotuning, switch to `spawn` mode, which runs each trial in an isolated subprocess with timeout protection — so one bad config can't take down your entire autotuning run. Enable it via environment variable or decorator:
+- **Use spawn mode for autotuning if you hit issues.** By default, Helion's autotuner uses `fork` mode for precompilation, which is faster but can hang or crash if a bad config corrupts process state. If that happens, switch to `spawn` mode, which runs each trial in an isolated subprocess with timeout protection — slower due to subprocess overhead, but one bad config can't take down your entire autotuning run. Enable it via environment variable or decorator:
   ```bash
   export HELION_AUTOTUNE_PRECOMPILE=spawn
   ```
