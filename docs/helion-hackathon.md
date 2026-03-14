@@ -18,6 +18,38 @@ Submit [Helion](https://github.com/pytorch/helion) kernels to the GPU MODE leade
 | 4 | `gated_deltanet_chunk_fwd_o` | Output computation for Gated DeltaNet |
 | 5 | `gated_deltanet_recompute_w_u` | WY-transform forward kernel for Gated DeltaNet |
 
+## Scoring
+
+### Point Allocation
+
+| Kernel | Correctness Points | Performance Points |
+|---|---|---|
+| **FP8 Quantization** | 100 | 0 (unscored) |
+| **Causal Depthwise 1D Convolution** | 100 | 1000 |
+| **Gated DeltaNet chunk\_fwd\_h** | 100 | 1000 |
+| **Gated DeltaNet chunk\_fwd\_o** | 100 | 1000 |
+| **Gated DeltaNet recompute\_w\_u** | 100 | 1000 |
+
+### Scoring Rules
+
+- **Performance Metric**: For each benchmark shape, the kernel is captured in a CUDA graph and replayed with L2 cache clearing before each invocation. The graph unrolls enough calls to fill ~100ms of GPU time, and this is repeated 10 times. The runtime is the arithmetic mean of those 10 measurements.
+- **Ranking**: Participants are ranked per kernel by runtime (fastest = rank 1).
+- **Formula**: Score = CorrectnessPoints + (PerformancePoints × [1 − (rank - 1) / 10])
+  - CorrectnessPoints are earned if the submission passes all test input shapes.
+  - Only the top 10 performers per kernel (who pass all tests) can earn PerformancePoints.
+  - Rank 1 → 100% of PerformancePoints, Rank 2 → 90%, …, Rank 10 → 10%.
+- **Tiebreaker**: If two participants have the same metric value, the earlier submission wins.
+- **Test case shapes**: Provided in `task.yml`; input data sampled from a random distribution.
+
+**Total score** = Sum of points for all kernels.
+
+## Rules & Requirements
+
+- Kernel must pass all test input shapes (numerical accuracy within tolerance) with participant-provided config
+- All benchmark shapes must have their best configs submitted for that kernel to be scored
+- Implementations must use Helion DSL. `hl.inline_triton()`, `hl.triton_kernel()`, and `hl.inline_asm_elementwise()` are allowed as escape hatches, but the majority of your kernel should be written in Helion. Submissions that are predominantly inline Triton/ASM with a thin Helion wrapper may be disqualified at judges' discretion
+- Unlimited submissions per participant per kernel. Only your best submission counts. Each submission should include: your Helion kernel implementation, one config per test input shape, and one best autotuned config per benchmark input shape
+
 ## Quick Start
 
 ```bash
@@ -76,7 +108,7 @@ Replace `causal_conv1d_py/` with any problem directory.
 
 Your submission must be a single Python file that defines `custom_kernel(data: input_t) -> output_t`. To use Helion, write a `@helion.kernel` decorated function and call it from `custom_kernel`.
 
-Here's an example structure for `causal_conv1d`:
+Use **per-shape configs** to optimize for each benchmark shape independently. The per-shape config pattern uses a factory function to create kernel variants with different configs, and dispatches based on input tensor shapes:
 
 ```python
 from task import input_t, output_t
@@ -84,55 +116,69 @@ import torch
 import helion
 import helion.language as hl
 
-@helion.kernel(config=helion.Config(
-    block_sizes=[64, 64],
-    num_warps=4,
-    num_stages=3,
-    # ... your tuned config here
-))
-def causal_conv1d_kernel(x: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor) -> torch.Tensor:
-    # Your Helion kernel implementation
-    ...
+# Map input shapes to optimized configs (autotune each shape locally).
+# Include all test and benchmark shapes from task.yml.
+SHAPE_CONFIGS: dict[tuple, helion.Config] = {
+    # Test shapes
+    (1, 64, 64, 4): helion.Config(...),  # TODO: replace with default config or any config that passes correctness check
+    (2, 128, 128, 4): helion.Config(...),  # TODO: replace with default config or any config that passes correctness check
+    # ... one entry per test shape
+    # Benchmark shapes
+    (1, 768, 512, 4): helion.Config(...),  # TODO: replace with your autotuned config
+    (1, 768, 2048, 4): helion.Config(...),  # TODO: replace with your autotuned config
+    # ... one entry per benchmark shape
+}
+
+
+def _make_kernel(config: helion.Config):
+    @helion.kernel(static_shapes=True, config=config)
+    def causal_conv1d_kernel(x: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor) -> torch.Tensor:
+        # Your Helion kernel implementation
+        ...
+
+    return causal_conv1d_kernel
+
+
+_KERNELS = {shape: _make_kernel(cfg) for shape, cfg in SHAPE_CONFIGS.items()}
+
 
 def custom_kernel(data: input_t) -> output_t:
     x, weight, bias = data
-    return causal_conv1d_kernel(x, weight, bias)
+    B, D, S = x.shape
+    W = weight.shape[1]
+    kernel = _KERNELS[(B, D, S, W)]
+    return kernel(x, weight, bias)
 ```
 
 ## Do NOT Autotune on KernelBot
 
-When submitting to KernelBot, you must hardcode a single config in your `@helion.kernel` decorator. Do **not** rely on Helion's autotuner at submission time.
+When submitting to KernelBot, you must hardcode configs in your `@helion.kernel` decorator. Do **not** rely on Helion's autotuner at submission time.
 
 KernelBot runs your submission on shared infrastructure with timeouts. If your kernel triggers autotuning (which can take 10+ minutes and hundreds of trial runs), your submission will time out and fail.
 
-### The correct workflow
+### Getting a default config (no autotuning)
 
-1. **Autotune locally on your Nebius-provided B200 compute.** Run your Helion kernel without a fixed config (or with `autotune_effort="quick"`) to find the best configuration for the benchmark shapes.
+During early development, you can use `autotune_effort="none"` to skip autotuning and use Helion's default config. When you run the kernel, Helion prints the default config to stderr:
 
-2. **Copy the best config** from the autotuner output. Helion prints something like:
+```
+Using default config: @helion.kernel(config=helion.Config(block_sizes=[64, 64], num_warps=4, num_stages=1), static_shapes=True)
+```
+
+Copy the `helion.Config(...)` portion into your `SHAPE_CONFIGS` dict. The default config is usually good enough for test input shapes to pass correctness checks, but won't be competitive for benchmark shapes on the leaderboard.
+
+### Autotuning for benchmark shapes
+
+1. **Autotune locally on your Nebius-provided B200 compute.** Run your Helion kernel without a fixed config (or with `autotune_effort="quick"`) to find the best configuration for each benchmark shape.
+
+2. **Copy the best config** from the autotuner output. When autotuning completes, Helion prints:
    ```
    One can hardcode the best config and skip autotuning with:
-       @helion.kernel(config=helion.Config(block_sizes=[64, 64, 64], ...))
+       @helion.kernel(config=helion.Config(block_sizes=[64, 64, 64], num_warps=8, num_stages=3))
    ```
 
-3. **Hardcode the config in your submission.** Pass it via `config=` in the `@helion.kernel` decorator:
-   ```python
-   @helion.kernel(config=helion.Config(
-       block_sizes=[64, 64, 64],
-       loop_orders=[[0, 1]],
-       num_warps=8,
-       num_stages=6,
-       indexing='block_ptr',
-       pid_type='flat',
-       # ... rest of your tuned config
-   ))
-   def my_kernel(...):
-       ...
-   ```
+3. **Hardcode the config in your submission.** Copy the `helion.Config(...)` from step 2 into the corresponding benchmark shape entry in `SHAPE_CONFIGS`. Repeat steps 1-3 for each benchmark shape in `task.yml`.
 
-4. **Submit the file** with the hardcoded config to KernelBot.
-
-You can also use `autotune_effort="none"` during development to skip autotuning entirely and use the default config, but this will give worse performance.
+4. **Submit the file** with the hardcoded configs to KernelBot.
 
 ## Submitting All 5 Problems
 
@@ -282,7 +328,38 @@ Try both `ENABLE_TILE=0` and `ENABLE_TILE=1`, with and without ACFs, then submit
 - **Check the reference.** Each `reference.py` shows the baseline implementation you're trying to beat. Understanding it helps you write a better kernel.
 - **Use `--mode test` first.** Verify correctness before submitting to the leaderboard. This saves time and leaderboard quota.
 - **Profile your kernels.** Use `--mode profile` to get Nsight Compute metrics and identify bottlenecks.
-- **One config per submission.** If Helion found different best configs for different benchmark shapes, pick the one that works best across all of them -- the leaderboard uses geometric mean across benchmarks.
+- **One config per shape.** Use the per-shape config pattern to provide an optimized config for each benchmark shape in `task.yml`.
+
+## Working on Your GPU Machine
+
+- **Use a GitHub repo for your kernels.** Push your work to a private GitHub repo so you don't lose progress if the GPU machine goes offline or loses data.
+- **Use tmux for autotuning.** Autotuning can take a long time. Run it inside a `tmux` session so it survives SSH disconnections.
+- **Use spawn mode for autotuning if you hit issues.** By default, Helion's autotuner uses `fork` mode for precompilation, which is faster but can hang or crash if a bad config corrupts process state. If that happens, switch to `spawn` mode, which runs each trial in an isolated subprocess with timeout protection — slower due to subprocess overhead, but one bad config can't take down your entire autotuning run. Enable it via environment variable or decorator:
+  ```bash
+  export HELION_AUTOTUNE_PRECOMPILE=spawn
+  ```
+  ```python
+  @helion.kernel(autotune_precompile="spawn")
+  def my_kernel(...):
+      ...
+  ```
+  You can also control parallelism with `HELION_AUTOTUNE_PRECOMPILE_JOBS` (defaults to CPU count).
+- **Machine frozen or crashed?** If your GPU machine becomes unresponsive and needs a reboot, let us know and we can reboot it for you.
+
+## Open-Ended Contribution Track
+
+In addition to the kernel competition, there is a separate open-ended contribution track. Participants can earn recognition and prizes for contributions to Helion beyond kernel implementations. This track is scored independently and does not affect kernel competition standings. Examples:
+
+| Contribution Type | Description |
+|---|---|
+| Autotuner Improvements | Enhancements to Helion's autotuning system |
+| Bug Fixes | Bug fixes in Helion |
+| Tooling/Infrastructure | Improvements to debugging, profiling, or developer experience |
+| Documentation | Significant documentation contributions |
+| Other Novel Contributions | Other impactful contributions at judges' discretion |
+
+Contributions are uncapped and evaluated by a panel of judges based on impact and quality. Prizes for this track are awarded separately from the kernel competition.
+
 ## Resources
 
 - [Helion Documentation](https://helionlang.com)
