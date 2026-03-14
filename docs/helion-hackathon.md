@@ -56,13 +56,10 @@ Submit [Helion](https://github.com/pytorch/helion) kernels to the GPU MODE leade
 # 1. Install popcorn-cli
 curl -fsSL https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/install.sh | bash
 
-# 2. Register
-popcorn register discord
-
-# 3. Join the challenge with your invite code
+# 2. Join the challenge with your invite code
 popcorn join <YOUR_INVITE_CODE>
 
-# 4. Setup a project (downloads the submission template for you)
+# 3. Setup a project (downloads the submission template for you)
 popcorn setup
 # Select "Helion Kernel Challenge", then pick a problem and GPU
 ```
