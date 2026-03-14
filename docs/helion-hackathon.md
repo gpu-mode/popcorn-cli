@@ -20,28 +20,22 @@ Submit [Helion](https://github.com/pytorch/helion) kernels to the GPU MODE leade
 
 ## Scoring
 
-### Point Allocation
+Each scored problem awards points to the **top 3** fastest correct submissions:
 
-| Kernel | Correctness Points | Performance Points |
-|---|---|---|
-| **FP8 Quantization** | 100 | 0 (unscored) |
-| **Causal Depthwise 1D Convolution** | 100 | 1000 |
-| **Gated DeltaNet chunk\_fwd\_h** | 100 | 1000 |
-| **Gated DeltaNet chunk\_fwd\_o** | 100 | 1000 |
-| **Gated DeltaNet recompute\_w\_u** | 100 | 1000 |
+| Place | Points |
+|---|---|
+| 1st | 5 |
+| 2nd | 3 |
+| 3rd | 1 |
 
-### Scoring Rules
+> **Note:** Problem 1 (`fp8_quant`) is **not scored** — it is a warm-up problem only. Points are awarded for problems 2–5.
 
 - **Performance Metric**: For each benchmark shape, the kernel is captured in a CUDA graph and replayed with L2 cache clearing before each invocation. The graph unrolls enough calls to fill ~100ms of GPU time, and this is repeated 10 times. The runtime is the arithmetic mean of those 10 measurements.
-- **Ranking**: Participants are ranked per kernel by runtime (fastest = rank 1).
-- **Formula**: Score = CorrectnessPoints + (PerformancePoints × [1 − (rank - 1) / 10])
-  - CorrectnessPoints are earned if the submission passes all test input shapes.
-  - Only the top 10 performers per kernel (who pass all tests) can earn PerformancePoints.
-  - Rank 1 → 100% of PerformancePoints, Rank 2 → 90%, …, Rank 10 → 10%.
-- **Tiebreaker**: If two participants have the same metric value, the earlier submission wins.
+- **Correctness**: Submissions must pass all test input shapes to be eligible for points.
+- **Tiebreaker**: If two participants have the same metric value, judges will decide based on the quality of the kernel.
 - **Test case shapes**: Provided in `task.yml`; input data sampled from a random distribution.
 
-**Total score** = Sum of points for all kernels.
+**Total score** = Sum of points across problems 2–5 (max 20).
 
 ## Rules & Requirements
 
