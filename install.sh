@@ -28,7 +28,12 @@ SYMLINK_NAME=""
 EXTENSION=""
 
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    OS="linux"
+    ARCH=$(uname -m)
+    if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then
+        OS="linux-aarch64"
+    else
+        OS="linux"
+    fi
     EXTENSION=".tar.gz"
     BINARY_NAME="popcorn-cli"
     SYMLINK_NAME="popcorn"
@@ -47,7 +52,7 @@ else
     exit 1
 fi
 
-echo "✅ Detected OS: $OS"
+echo "✅ Detected OS: $OS ($(uname -m))"
 
 # Download URL
 DOWNLOAD_URL="https://github.com/gpu-mode/popcorn-cli/releases/latest/download/popcorn-cli-${OS}${EXTENSION}"
