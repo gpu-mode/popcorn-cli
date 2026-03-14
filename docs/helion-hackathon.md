@@ -329,6 +329,9 @@ Try both `ENABLE_TILE=0` and `ENABLE_TILE=1`, with and without ACFs, then submit
 - **Use `--mode test` first.** Verify correctness before submitting to the leaderboard. This saves time and leaderboard quota.
 - **Profile your kernels.** Use `--mode profile` to get Nsight Compute metrics and identify bottlenecks.
 - **One config per shape.** Use the per-shape config pattern to provide an optimized config for each benchmark shape in `task.yml`.
+
+## Working on Your GPU Machine
+
 - **Use a GitHub repo for your kernels.** Push your work to a private GitHub repo so you don't lose progress if the GPU machine goes offline or loses data.
 - **Use tmux for autotuning.** Autotuning can take a long time. Run it inside a `tmux` session so it survives SSH disconnections.
 - **Machine frozen or crashed?** If your GPU machine becomes unresponsive and needs a reboot, let us know and we can reboot it for you.
