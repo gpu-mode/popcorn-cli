@@ -291,11 +291,11 @@ def my_kernel(...):
 
 The B200 instances also ship with **nvtriton**, NVIDIA's extended Triton compiler that includes a **TileIR** backend — an alternative compilation pipeline that bypasses LLVM and compiles directly to CUBIN via NVIDIA's `tileiras` compiler.
 
-| | `ENABLE_TILE=0` (default) | `ENABLE_TILE=1` |
+| | `ENABLE_TILE=0` (default) | `ENABLE_TILE=1` + `HELION_BACKEND=tileir` |
 |---|---|---|
 | **Helion backend** | `triton` | `tileir` |
 
-**Step 1: Enable TileIR and autotune.** Set the env vars before importing Helion, then autotune as usual. Helion automatically adjusts the search space for the TileIR backend.
+**Step 1: Enable TileIR and autotune.** Set both `ENABLE_TILE=1` and `HELION_BACKEND=tileir` env vars before importing Helion, then autotune as usual. Helion automatically adjusts the search space for the TileIR backend.
 
 **Step 2: Hardcode the TileIR config in your submission.** Copy the best config from the autotuner output (it will include TileIR-specific fields like `num_ctas` and `occupancy`). The env vars must be set before imports:
 
@@ -320,7 +320,7 @@ def my_kernel(...):
 
 ### Which should I use?
 
-Try both `ENABLE_TILE=0` and `ENABLE_TILE=1`, with and without ACFs, then submit whichever gives the best benchmark numbers.
+Try both the default backend (`ENABLE_TILE=0`) and the TileIR backend (`ENABLE_TILE=1` + `HELION_BACKEND=tileir`), with and without ACFs, then submit whichever gives the best benchmark numbers.
 
 ## Tips
 
