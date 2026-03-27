@@ -48,12 +48,12 @@ Stall Barrier                   inst         0.75
 
 After profiling, a zip file is saved to your current directory:
 ```
-profile_20260113_031052_run0.zip
+profile_20260113_031052_result0_profile0.zip
 ```
 
 This contains a `.ncu-rep` file (the full Nsight Compute report):
 ```
-$ unzip -l profile_20260113_031052_run0.zip
+$ unzip -l profile_20260113_031052_result0_profile0.zip
   Length      Date    Time    Name
 ---------  ---------- -----   ----
   2178383  01-13-2026 03:10   profile.ncu-rep
