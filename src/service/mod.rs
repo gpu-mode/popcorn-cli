@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use base64::Engine;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::multipart::{Form, Part};
 use reqwest::Client;
@@ -650,7 +650,7 @@ pub async fn submit_solution<P: AsRef<Path>>(
                                             {
                                                 for (key, run_data) in runs.iter() {
                                                     if key.starts_with("profile") {
-                                                        handle_profile_result(cb, run_data, i);
+                                                        handle_profile_result(cb, run_data, i, key);
                                                     }
                                                 }
                                             }
@@ -754,7 +754,12 @@ pub async fn submit_solution<P: AsRef<Path>>(
 
 /// Handle profile mode results by decoding and displaying profile data,
 /// and saving trace files to the current directory.
-fn handle_profile_result(cb: &(dyn Fn(String) + Send + Sync), run_data: &Value, run_idx: usize) {
+fn handle_profile_result(
+    cb: &(dyn Fn(String) + Send + Sync),
+    run_data: &Value,
+    result_idx: usize,
+    run_key: &str,
+) {
     // 1. Get profiler type and display it
     if let Some(profile) = run_data.get("profile") {
         let profiler = profile
@@ -814,11 +819,9 @@ fn handle_profile_result(cb: &(dyn Fn(String) + Send + Sync), run_data: &Value, 
             if !trace_b64.is_empty() {
                 match base64::engine::general_purpose::STANDARD.decode(trace_b64) {
                     Ok(trace_data) => {
-                        // Generate unique filename with timestamp and run index
-                        let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
-                        let filename = format!("profile_{}_run{}.zip", timestamp, run_idx);
-                        match std::fs::write(&filename, &trace_data) {
-                            Ok(_) => cb(format!("\nSaved profile trace to: {}", filename)),
+                        match write_profile_trace_file(&trace_data, Utc::now(), result_idx, run_key)
+                        {
+                            Ok(filename) => cb(format!("\nSaved profile trace to: {}", filename)),
                             Err(e) => cb(format!("Failed to save trace file: {}", e)),
                         }
                     }
@@ -836,9 +839,55 @@ fn handle_profile_result(cb: &(dyn Fn(String) + Send + Sync), run_data: &Value, 
     }
 }
 
+fn sanitize_profile_run_key(run_key: &str) -> String {
+    let sanitized: String = run_key
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect();
+
+    if sanitized.is_empty() {
+        "profile".to_string()
+    } else {
+        sanitized
+    }
+}
+
+fn build_profile_trace_filename(
+    timestamp: DateTime<Utc>,
+    result_idx: usize,
+    run_key: &str,
+) -> String {
+    let run_key = sanitize_profile_run_key(run_key);
+    format!(
+        "profile_{}_result{}_{}.zip",
+        timestamp.format("%Y%m%d_%H%M%S"),
+        result_idx,
+        run_key
+    )
+}
+
+fn write_profile_trace_file(
+    trace_data: &[u8],
+    timestamp: DateTime<Utc>,
+    result_idx: usize,
+    run_key: &str,
+) -> std::io::Result<String> {
+    let filename = build_profile_trace_filename(timestamp, result_idx, run_key);
+    std::fs::write(&filename, trace_data)?;
+    Ok(filename)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
+    use tempfile::tempdir;
 
     #[test]
     fn test_create_client_without_cli_id() {
@@ -931,5 +980,65 @@ mod tests {
         if let Some(val) = original {
             std::env::set_var("POPCORN_API_URL", val);
         }
+    }
+
+    #[test]
+    fn test_build_profile_trace_filename_uses_result_index_and_run_key() {
+        let timestamp = Utc
+            .with_ymd_and_hms(2026, 3, 27, 9, 38, 46)
+            .single()
+            .unwrap();
+
+        let filename = build_profile_trace_filename(timestamp, 0, "profile3");
+
+        assert_eq!(filename, "profile_20260327_093846_result0_profile3.zip");
+    }
+
+    #[test]
+    fn test_build_profile_trace_filename_sanitizes_run_key() {
+        let timestamp = Utc
+            .with_ymd_and_hms(2026, 3, 27, 9, 38, 46)
+            .single()
+            .unwrap();
+
+        let filename = build_profile_trace_filename(timestamp, 1, "profile:1/a b");
+
+        assert_eq!(
+            filename,
+            "profile_20260327_093846_result1_profile_1_a_b.zip"
+        );
+    }
+
+    #[test]
+    fn test_build_profile_trace_filename_uses_default_run_key_when_empty() {
+        let timestamp = Utc
+            .with_ymd_and_hms(2026, 3, 27, 9, 38, 46)
+            .single()
+            .unwrap();
+
+        let filename = build_profile_trace_filename(timestamp, 2, "");
+
+        assert_eq!(filename, "profile_20260327_093846_result2_profile.zip");
+    }
+
+    #[test]
+    fn test_write_profile_trace_file_writes_expected_contents() {
+        let temp_dir = tempdir().unwrap();
+        let original_dir = std::env::current_dir().unwrap();
+        let timestamp = Utc
+            .with_ymd_and_hms(2026, 3, 27, 9, 38, 46)
+            .single()
+            .unwrap();
+        let trace_data = b"trace-bytes";
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let filename = write_profile_trace_file(trace_data, timestamp, 3, "profile/3").unwrap();
+        let written_path = temp_dir.path().join(&filename);
+
+        assert_eq!(filename, "profile_20260327_093846_result3_profile_3.zip");
+        assert_eq!(std::fs::read(&written_path).unwrap(), trace_data);
+
+        std::env::set_current_dir(original_dir).unwrap();
     }
 }
