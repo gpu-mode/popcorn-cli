@@ -887,6 +887,7 @@ fn write_profile_trace_file(
 mod tests {
     use super::*;
     use chrono::TimeZone;
+    use tempfile::tempdir;
 
     #[test]
     fn test_create_client_without_cli_id() {
@@ -997,5 +998,32 @@ mod tests {
         let filename = build_profile_trace_filename(timestamp, 1, "profile:1/a b");
 
         assert_eq!(filename, "profile_20260327_093846_result1_profile_1_a_b.zip");
+    }
+
+    #[test]
+    fn test_build_profile_trace_filename_uses_default_run_key_when_empty() {
+        let timestamp = Utc.with_ymd_and_hms(2026, 3, 27, 9, 38, 46).single().unwrap();
+
+        let filename = build_profile_trace_filename(timestamp, 2, "");
+
+        assert_eq!(filename, "profile_20260327_093846_result2_profile.zip");
+    }
+
+    #[test]
+    fn test_write_profile_trace_file_writes_expected_contents() {
+        let temp_dir = tempdir().unwrap();
+        let original_dir = std::env::current_dir().unwrap();
+        let timestamp = Utc.with_ymd_and_hms(2026, 3, 27, 9, 38, 46).single().unwrap();
+        let trace_data = b"trace-bytes";
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let filename = write_profile_trace_file(trace_data, timestamp, 3, "profile/3").unwrap();
+        let written_path = temp_dir.path().join(&filename);
+
+        assert_eq!(filename, "profile_20260327_093846_result3_profile_3.zip");
+        assert_eq!(std::fs::read(&written_path).unwrap(), trace_data);
+
+        std::env::set_current_dir(original_dir).unwrap();
     }
 }
