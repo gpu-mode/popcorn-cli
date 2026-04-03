@@ -984,7 +984,10 @@ mod tests {
 
     #[test]
     fn test_build_profile_trace_filename_uses_result_index_and_run_key() {
-        let timestamp = Utc.with_ymd_and_hms(2026, 3, 27, 9, 38, 46).single().unwrap();
+        let timestamp = Utc
+            .with_ymd_and_hms(2026, 3, 27, 9, 38, 46)
+            .single()
+            .unwrap();
 
         let filename = build_profile_trace_filename(timestamp, 0, "profile3");
 
@@ -993,16 +996,25 @@ mod tests {
 
     #[test]
     fn test_build_profile_trace_filename_sanitizes_run_key() {
-        let timestamp = Utc.with_ymd_and_hms(2026, 3, 27, 9, 38, 46).single().unwrap();
+        let timestamp = Utc
+            .with_ymd_and_hms(2026, 3, 27, 9, 38, 46)
+            .single()
+            .unwrap();
 
         let filename = build_profile_trace_filename(timestamp, 1, "profile:1/a b");
 
-        assert_eq!(filename, "profile_20260327_093846_result1_profile_1_a_b.zip");
+        assert_eq!(
+            filename,
+            "profile_20260327_093846_result1_profile_1_a_b.zip"
+        );
     }
 
     #[test]
     fn test_build_profile_trace_filename_uses_default_run_key_when_empty() {
-        let timestamp = Utc.with_ymd_and_hms(2026, 3, 27, 9, 38, 46).single().unwrap();
+        let timestamp = Utc
+            .with_ymd_and_hms(2026, 3, 27, 9, 38, 46)
+            .single()
+            .unwrap();
 
         let filename = build_profile_trace_filename(timestamp, 2, "");
 
@@ -1013,7 +1025,10 @@ mod tests {
     fn test_write_profile_trace_file_writes_expected_contents() {
         let temp_dir = tempdir().unwrap();
         let original_dir = std::env::current_dir().unwrap();
-        let timestamp = Utc.with_ymd_and_hms(2026, 3, 27, 9, 38, 46).single().unwrap();
+        let timestamp = Utc
+            .with_ymd_and_hms(2026, 3, 27, 9, 38, 46)
+            .single()
+            .unwrap();
         let trace_data = b"trace-bytes";
 
         std::env::set_current_dir(temp_dir.path()).unwrap();
