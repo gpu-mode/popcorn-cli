@@ -6,7 +6,7 @@ The Popcorn CLI is intended to submit kernels to leaderboards on GPU Mode's Kern
 
 Agents must write CUDA C and C++ kernels and integrate them into the single-file `submission.py` workflow.
 
-Do not submit pure PyTorch based optimization. The objective of the task is to write CUDA C or C++.
+Do not submit pure PyTorch based optimization. The objective of the task is to use any kernel DSL like CUDA or Triton to improved *beyond* the performance of native PyTorch.
 
 ## Skills
 A skill is a local instruction bundle stored in `SKILL.md`.
