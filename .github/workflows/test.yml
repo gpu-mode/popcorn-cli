@@ -44,6 +44,28 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
+  arm64-smoke:
+    name: ARM64 Build Smoke Test
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Set up cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ubuntu-24.04-arm-test
+
+      - name: Build
+        run: cargo build --release --verbose
+
+      - name: Verify binary runs
+        run: ./target/release/popcorn-cli --version
+
   coverage:
     name: Code Coverage
     runs-on: ubuntu-latest

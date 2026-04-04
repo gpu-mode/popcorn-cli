@@ -54,10 +54,10 @@ fi
 
 echo "✅ Detected OS: $OS ($(uname -m))"
 
-# Allow overrides so CI can validate the installer against a locally built asset.
-DOWNLOAD_URL="${DOWNLOAD_URL:-https://github.com/gpu-mode/popcorn-cli/releases/latest/download/popcorn-cli-${OS}${EXTENSION}}"
-TEMP_DIR="${TEMP_DIR:-/tmp/popcorn-cli-install}"
-INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
+# Download URL
+DOWNLOAD_URL="https://github.com/gpu-mode/popcorn-cli/releases/latest/download/popcorn-cli-${OS}${EXTENSION}"
+TEMP_DIR="/tmp/popcorn-cli-install"
+INSTALL_DIR="$HOME/.local/bin"
 
 # Create directories
 mkdir -p "$TEMP_DIR"
