@@ -124,22 +124,22 @@ popcorn submissions delete <ID>
 popcorn submissions delete <ID> --force
 ```
 
-Smallest possible flow:
+#### Avoid Reward Hacks
+
+If you want to avoid reward hacks, inspect your past submissions and delete any bad ones.
 
 ```bash
 # 1. List your submissions and note the ID
 popcorn submissions list --leaderboard grayscale_v2
 
-# 2. Inspect the stored code for that submission ID
+# 2. Inspect the exact code stored for that submission
 popcorn submissions show 1234
 
-# 3. Delete that submission ID
+# 3. Delete the submission if you do not want it kept
 popcorn submissions delete 1234
 ```
 
-`list` shows the submission `ID`, `show` prints the full submitted code for that `ID`, and `delete` previews the submission and asks for confirmation before removing it.
-
-If you have a reward-hacked or otherwise bad submission, you can use this flow to find the submission ID, inspect the exact code that was stored, and delete it yourself.
+`list` shows the submission `ID`, `show` prints the full submitted code for that `ID`, and `delete` previews the submission before removing it.
 
 ### Authentication
 
