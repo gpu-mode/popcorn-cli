@@ -54,6 +54,7 @@ Since we're effectively giving out GPUs for free we rely on either github or dis
 
 1. Register the CLI (Discord recommended): `popcorn register discord` (or `popcorn register github`)
 2. To ensure the above worked you can run `cat $HOME/.popcorn.yaml` which should print your client ID which is what will be sent to us on every request
+3. To override the submitter ID for local proxy/testing flows, set `POPCORN_SUBMITTER_ID`. Commands that require `cli_id` use this value first, then fall back to `~/.popcorn.yaml`.
 
 Sometimes you'll get an error that you're already authenticated despite being unable to submit in which case you can run `popcorn reregister [discord|github]`.
 
