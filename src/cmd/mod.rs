@@ -297,9 +297,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
 mod tests {
     use super::resolve_cli_id;
     use std::env;
-    use std::fs;
     use std::sync::Mutex;
-    use tempfile::tempdir;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -349,9 +347,9 @@ mod tests {
         let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let _guard = EnvGuard::new();
 
-        let tmp = tempdir().expect("Failed to create temp dir");
+        let tmp = tempfile::tempdir().expect("Failed to create temp dir");
         let config_path = tmp.path().join(".popcorn.yaml");
-        fs::write(&config_path, "cli_id: config-cli-id\n").expect("Failed to write config");
+        std::fs::write(&config_path, "cli_id: config-cli-id\n").expect("Failed to write config");
 
         env::set_var("HOME", tmp.path());
         env::remove_var("POPCORN_SUBMITTER_ID");
@@ -366,9 +364,9 @@ mod tests {
         let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let _guard = EnvGuard::new();
 
-        let tmp = tempdir().expect("Failed to create temp dir");
+        let tmp = tempfile::tempdir().expect("Failed to create temp dir");
         let config_path = tmp.path().join(".popcorn.yaml");
-        fs::write(&config_path, "cli_id: config-cli-id\n").expect("Failed to write config");
+        std::fs::write(&config_path, "cli_id: config-cli-id\n").expect("Failed to write config");
 
         env::set_var("HOME", tmp.path());
         env::set_var("POPCORN_SUBMITTER_ID", "   ");
@@ -383,9 +381,9 @@ mod tests {
         let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let _guard = EnvGuard::new();
 
-        let tmp = tempdir().expect("Failed to create temp dir");
+        let tmp = tempfile::tempdir().expect("Failed to create temp dir");
         let config_path = tmp.path().join(".popcorn.yaml");
-        fs::write(&config_path, "{}\n").expect("Failed to write config");
+        std::fs::write(&config_path, "{}\n").expect("Failed to write config");
 
         env::set_var("HOME", tmp.path());
         env::remove_var("POPCORN_SUBMITTER_ID");
