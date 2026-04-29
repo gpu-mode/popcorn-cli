@@ -345,4 +345,52 @@ mod tests {
         let cli_id = resolve_cli_id().expect("Expected cli_id resolution to succeed");
         assert_eq!(cli_id, "env-cli-id");
     }
+
+    #[test]
+    fn test_resolve_cli_id_falls_back_to_config() {
+        let _lock = ENV_LOCK.lock().expect("Failed to lock env mutex");
+        let _guard = EnvGuard::new();
+
+        let temp_home = tempdir().expect("Failed to create temp home dir");
+        let config_path = temp_home.path().join(".popcorn.yaml");
+        fs::write(config_path, "cli_id: config-cli-id\n").expect("Failed to write config");
+
+        env::set_var("HOME", temp_home.path());
+        env::remove_var("POPCORN_SUBMITTER_ID");
+
+        let cli_id = resolve_cli_id().expect("Expected cli_id resolution to succeed");
+        assert_eq!(cli_id, "config-cli-id");
+    }
+
+    #[test]
+    fn test_resolve_cli_id_ignores_empty_env() {
+        let _lock = ENV_LOCK.lock().expect("Failed to lock env mutex");
+        let _guard = EnvGuard::new();
+
+        let temp_home = tempdir().expect("Failed to create temp home dir");
+        let config_path = temp_home.path().join(".popcorn.yaml");
+        fs::write(config_path, "cli_id: config-cli-id\n").expect("Failed to write config");
+
+        env::set_var("HOME", temp_home.path());
+        env::set_var("POPCORN_SUBMITTER_ID", "   ");
+
+        let cli_id = resolve_cli_id().expect("Expected cli_id resolution to succeed");
+        assert_eq!(cli_id, "config-cli-id");
+    }
+
+    #[test]
+    fn test_resolve_cli_id_errors_when_no_cli_id() {
+        let _lock = ENV_LOCK.lock().expect("Failed to lock env mutex");
+        let _guard = EnvGuard::new();
+
+        let temp_home = tempdir().expect("Failed to create temp home dir");
+        let config_path = temp_home.path().join(".popcorn.yaml");
+        fs::write(config_path, "{}\n").expect("Failed to write config");
+
+        env::set_var("HOME", temp_home.path());
+        env::remove_var("POPCORN_SUBMITTER_ID");
+
+        let err = resolve_cli_id().unwrap_err();
+        assert!(err.to_string().contains("cli_id not found"));
+    }
 }
