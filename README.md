@@ -9,6 +9,10 @@ Tested on linux and mac but should just work on Windows as well.
 
 Profile your kernels with `--mode profile` and get detailed metrics. Currently only available for the NVFP4 Blackwell competition (Modal, which we use for other competitions, does not support NCU). See [docs/profiling.md](docs/profiling.md) for details.
 
+## [NEW] Submit To The Linear Algebra Competition
+
+The first linear algebra problem is batched QR on B200. See the short guide: [docs/linalg-qr-b200.md](docs/linalg-qr-b200.md).
+
 ## Installation
 
 ### Option 1: One-Line Install (Recommended)
