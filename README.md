@@ -1,7 +1,7 @@
 # Popcorn CLI
 
 A command-line interface tool for submitting solutions to the [gpumode.com](https://gpumode.com)
-<img width="1034" alt="Screenshot 2025-06-10 at 11 17 45 AM" src="https://github.com/user-attachments/assets/66414f12-a984-4a3d-b035-d31f8695a54d" />
+<img width="1034" alt="Screenshot 2025-06-10 at 11 17 45 AM" src="https://github.com/user-attachments/assets/66414f12-a984-4a3d-b035-d31f8695a54d" />
 
 Tested on linux and mac but should just work on Windows as well.
 
@@ -56,10 +56,10 @@ After installation, restart your terminal (or run `source ~/.bashrc` / `source ~
 
 Since we're effectively giving out GPUs for free we rely on either github or discord authentication to prove that you're a real human before you access our service.
 
-1. Register the CLI (Discord recommended): `popcorn register discord` (or `popcorn register github`)
+1. Register the CLI (Discord recommended): `popcorn-cli register discord` (or `popcorn-cli register github`)
 2. To ensure the above worked you can run `cat $HOME/.popcorn.yaml` which should print your client ID which is what will be sent to us on every request
 
-Sometimes you'll get an error that you're already authenticated despite being unable to submit in which case you can run `popcorn reregister [discord|github]`.
+Sometimes you'll get an error that you're already authenticated despite being unable to submit in which case you can run `popcorn-cli reregister [discord|github]`.
 
 ## Make your first submission
 
@@ -78,7 +78,7 @@ Bootstrap a project with Popcorn skill scaffolding and a submission template.
 
 ```bash
 # Create a project folder with skill scaffolding + submission.py
-popcorn setup
+popcorn-cli setup
 ```
 
 This will create a new folder named after the selected problem (e.g. `softmax/`), containing a `submission.py` template and agent skills in `.claude/skills` and `.codex/skills`. If a folder with that name already exists, a `-N` suffix is appended (e.g. `softmax-1/`).
@@ -89,16 +89,16 @@ Submit a solution to a leaderboard. Supports both TUI (interactive) and plain mo
 
 ```bash
 # Interactive TUI mode - select leaderboard, GPU, and mode interactively
-popcorn submit solution.py
+popcorn-cli submit solution.py
 
 # Direct submission with all options
-popcorn submit --leaderboard grayscale_v2 --gpu A100 --mode leaderboard solution.py
+popcorn-cli submit --leaderboard grayscale_v2 --gpu A100 --mode leaderboard solution.py
 
 # Plain output mode (no TUI, good for CI/scripts)
-popcorn submit --no-tui --leaderboard grayscale_v2 --gpu A100 --mode test solution.py
+popcorn-cli submit --no-tui --leaderboard grayscale_v2 --gpu A100 --mode test solution.py
 
 # Save results to a file
-popcorn submit --output results.json --leaderboard grayscale_v2 --gpu A100 --mode benchmark solution.py
+popcorn-cli submit --output results.json --leaderboard grayscale_v2 --gpu A100 --mode benchmark solution.py
 ```
 
 **Submission modes:**
@@ -113,19 +113,19 @@ Manage your past submissions.
 
 ```bash
 # List your submissions for a leaderboard
-popcorn submissions list --leaderboard grayscale_v2
+popcorn-cli submissions list --leaderboard grayscale_v2
 
 # Limit number of results
-popcorn submissions list --leaderboard grayscale_v2 --limit 10
+popcorn-cli submissions list --leaderboard grayscale_v2 --limit 10
 
 # View a specific submission with full code
-popcorn submissions show <ID>
+popcorn-cli submissions show <ID>
 
 # Delete a submission (with confirmation prompt)
-popcorn submissions delete <ID>
+popcorn-cli submissions delete <ID>
 
 # Delete without confirmation
-popcorn submissions delete <ID> --force
+popcorn-cli submissions delete <ID> --force
 ```
 
 #### Avoid Reward Hacks
@@ -134,13 +134,13 @@ If you want to avoid reward hacks, inspect your past submissions and delete any 
 
 ```bash
 # 1. List your submissions and note the ID
-popcorn submissions list --leaderboard grayscale_v2
+popcorn-cli submissions list --leaderboard grayscale_v2
 
 # 2. Inspect the exact code stored for that submission
-popcorn submissions show 1234
+popcorn-cli submissions show 1234
 
 # 3. Delete the submission if you do not want it kept
-popcorn submissions delete 1234
+popcorn-cli submissions delete 1234
 ```
 
 `list` shows the submission `ID`, `show` prints the full submitted code for that `ID`, and `delete` previews the submission before removing it.
@@ -151,12 +151,12 @@ Register or re-register your CLI with Discord or GitHub.
 
 ```bash
 # Initial registration (Discord recommended)
-popcorn register discord
-popcorn register github
+popcorn-cli register discord
+popcorn-cli register github
 
 # Re-register if you need to link a new account
-popcorn reregister discord
-popcorn reregister github
+popcorn-cli reregister discord
+popcorn-cli reregister github
 ```
 
 ### File Directives
@@ -179,7 +179,7 @@ Or C++ style:
 
 When these directives are present, you can submit with just:
 ```bash
-popcorn submit solution.py
+popcorn-cli submit solution.py
 ```
 
 ## Submission Format
