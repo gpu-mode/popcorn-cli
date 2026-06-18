@@ -80,6 +80,13 @@ pub struct SubmissionDetails {
     pub done: bool,
     pub code: String,
     pub runs: Vec<SubmissionRun>,
+    pub job: Option<SubmissionJobStatus>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SubmissionJobStatus {
+    pub status: Option<String>,
+    pub error: Option<String>,
 }
 
 /// A single run within a submission
