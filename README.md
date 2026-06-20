@@ -31,10 +31,18 @@ After installation, restart your terminal (or run `source ~/.bashrc` / `source ~
 
 ### Option 2: Manual Installation
 
-1. Download the binary for your OS from [releases](https://github.com/gpu-mode/popcorn-cli/releases/latest)
-2. Extract the archive
-3. Move the binary to a directory in your PATH
-4. Make it executable (Linux/macOS): `chmod +x popcorn-cli`
+1. Open the [releases page](https://github.com/gpu-mode/popcorn-cli/releases)
+2. Pick the version you want, or use the latest release
+3. Download the archive for your platform:
+   - Linux x86_64: `popcorn-cli-linux.tar.gz`
+   - Linux aarch64: `popcorn-cli-linux-aarch64.tar.gz`
+   - macOS Apple Silicon: `popcorn-cli-macos.tar.gz`
+   - Windows x86_64: `popcorn-cli-windows.zip`
+4. Extract the archive, move `popcorn-cli` into a directory on your `PATH`,
+   and run `popcorn --version` to confirm the installed version.
+
+Older versions are available from the same Releases page by selecting a previous
+tag.
 
 ### Option 3: Building from source
 
