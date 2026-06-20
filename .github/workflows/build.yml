@@ -125,6 +125,16 @@ jobs:
         with:
           tag_name: ${{ needs.version.outputs.new_tag }}
           name: Release ${{ needs.version.outputs.new_tag }}
+          body: |
+            Download the archive for your platform:
+
+            - Linux x86_64: `popcorn-cli-linux.tar.gz`
+            - Linux aarch64: `popcorn-cli-linux-aarch64.tar.gz`
+            - macOS Apple Silicon: `popcorn-cli-macos.tar.gz`
+            - Windows x86_64: `popcorn-cli-windows.zip`
+
+            Extract the archive, move `popcorn-cli` into a directory on your `PATH`,
+            and run `popcorn --version` to confirm the installed version.
           files: |
             popcorn-cli-linux.tar.gz/popcorn-cli-linux.tar.gz
             popcorn-cli-linux-aarch64.tar.gz/popcorn-cli-linux-aarch64.tar.gz
