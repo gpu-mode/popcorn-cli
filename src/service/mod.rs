@@ -19,6 +19,18 @@ use crate::models::{
 const SUBMISSION_POLL_INTERVAL_SECONDS: u64 = 5;
 const SUBMISSION_POLL_TIMEOUT_SECONDS: u64 = 60 * 60;
 
+/// Parse a run's `score` field, which the server may send either as a JSON
+/// number or as a JSON string (e.g. `0.0033` or `"0.0033"`). A plain
+/// `Value::as_f64()` returns `None` for the string form, which is why scores
+/// rendered as `-` in the submissions list/show views. Accept both forms.
+fn parse_score(value: &Value) -> Option<f64> {
+    match value {
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => s.parse::<f64>().ok(),
+        _ => None,
+    }
+}
+
 // Helper function to create a reusable reqwest client
 pub fn create_client(cli_id: Option<String>) -> Result<Client> {
     let mut default_headers = HeaderMap::new();
@@ -408,7 +420,7 @@ pub async fn get_user_submissions(
                 arr.iter()
                     .map(|r| UserSubmissionRun {
                         gpu_type: r["gpu_type"].as_str().unwrap_or("").to_string(),
-                        score: r["score"].as_f64(),
+                        score: parse_score(&r["score"]),
                     })
                     .collect()
             })
@@ -463,7 +475,7 @@ pub async fn get_user_submission(client: &Client, submission_id: i64) -> Result<
                     mode: r["mode"].as_str().unwrap_or("").to_string(),
                     secret: r["secret"].as_bool().unwrap_or(false),
                     runner: r["runner"].as_str().unwrap_or("").to_string(),
-                    score: r["score"].as_f64(),
+                    score: parse_score(&r["score"]),
                     passed: r["passed"].as_bool().unwrap_or(false),
                 })
                 .collect()
@@ -1231,5 +1243,21 @@ mod tests {
         assert_eq!(std::fs::read(&written_path).unwrap(), trace_data);
 
         std::env::set_current_dir(original_dir).unwrap();
+    }
+
+    #[test]
+    fn test_parse_score_accepts_number_and_string() {
+        use serde_json::json;
+
+        // The server sends score as a JSON string; older code only handled
+        // numbers, so string scores rendered as `-`. Both must parse now.
+        assert_eq!(parse_score(&json!("0.0033")), Some(0.0033));
+        assert_eq!(parse_score(&json!(0.0033)), Some(0.0033));
+
+        // Absent / null / non-numeric scores stay None.
+        assert_eq!(parse_score(&json!(null)), None);
+        assert_eq!(parse_score(&json!("")), None);
+        assert_eq!(parse_score(&json!("not-a-number")), None);
+        assert_eq!(parse_score(&Value::Null), None);
     }
 }
