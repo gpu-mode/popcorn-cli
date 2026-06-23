@@ -93,6 +93,10 @@ enum SubmissionsAction {
     Show {
         /// Submission ID
         id: i64,
+
+        /// Do not print the submission's code
+        #[arg(long)]
+        no_code: bool,
     },
     /// Delete a submission
     Delete {
@@ -255,7 +259,9 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 SubmissionsAction::List { leaderboard, limit } => {
                     submissions::list_submissions(cli_id, leaderboard, Some(limit)).await
                 }
-                SubmissionsAction::Show { id } => submissions::show_submission(cli_id, id).await,
+                SubmissionsAction::Show { id, no_code } => {
+                    submissions::show_submission(cli_id, id, no_code).await
+                }
                 SubmissionsAction::Delete { id, force } => {
                     submissions::delete_submission(cli_id, id, force).await
                 }

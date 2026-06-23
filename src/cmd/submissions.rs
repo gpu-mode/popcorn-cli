@@ -36,15 +36,13 @@ pub async fn list_submissions(
             gpus.join(",")
         };
 
-        // Get best score (lowest)
+        // Get best score (lowest).
         let best_score = sub
             .runs
             .iter()
             .filter_map(|r| r.score)
             .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let score_display = best_score
-            .map(|s| format!("{:.4}", s))
-            .unwrap_or_else(|| "-".to_string());
+        let score_display = format_score(best_score);
 
         let time = truncate(&sub.submission_time, 19);
 
@@ -64,7 +62,7 @@ pub async fn list_submissions(
 }
 
 /// Show a specific submission with full details
-pub async fn show_submission(cli_id: String, submission_id: i64) -> Result<()> {
+pub async fn show_submission(cli_id: String, submission_id: i64, no_code: bool) -> Result<()> {
     let client = service::create_client(Some(cli_id))?;
     let sub = service::get_user_submission(&client, submission_id).await?;
 
@@ -85,10 +83,7 @@ pub async fn show_submission(cli_id: String, submission_id: i64) -> Result<()> {
     if !sub.runs.is_empty() {
         println!("\nRuns:");
         for run in &sub.runs {
-            let score_str = run
-                .score
-                .map(|s| format!("{:.4}", s))
-                .unwrap_or_else(|| "-".to_string());
+            let score_str = format_score(run.score);
             let status = if run.passed { "passed" } else { "failed" };
             let secret_marker = if run.secret { " [secret]" } else { "" };
             let time_info = match (&run.start_time, &run.end_time) {
@@ -103,9 +98,11 @@ pub async fn show_submission(cli_id: String, submission_id: i64) -> Result<()> {
         }
     }
 
-    println!("\nCode:");
-    println!("{}", "-".repeat(60));
-    println!("{}", sub.code);
+    if !no_code {
+        println!("\nCode:");
+        println!("{}", "-".repeat(60));
+        println!("{}", sub.code);
+    }
 
     Ok(())
 }
@@ -165,5 +162,51 @@ fn truncate(s: &str, max_len: usize) -> String {
         s.to_string()
     } else {
         format!("{}...", &s[..max_len - 3])
+    }
+}
+
+/// Render a score for display: full f64 precision (the shortest string that
+/// round-trips) rather than a rounded `{:.4}`, or "-" when there is no score.
+fn format_score(score: Option<f64>) -> String {
+    score
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "-".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_score_full_precision() {
+        // Full precision, not rounded to 4 decimals: two near-tied scores stay
+        // distinguishable (the bug this replaces rendered both as "0.0017").
+        assert_eq!(
+            format_score(Some(0.001731805142084383)),
+            "0.001731805142084383"
+        );
+        assert_eq!(
+            format_score(Some(0.0017448536290123567)),
+            "0.0017448536290123567"
+        );
+    }
+
+    #[test]
+    fn test_format_score_no_trailing_zeros() {
+        // Shortest round-tripping form: no padding to 4 decimals.
+        assert_eq!(format_score(Some(1.5)), "1.5");
+        assert_eq!(format_score(Some(0.0)), "0");
+    }
+
+    #[test]
+    fn test_format_score_none_is_dash() {
+        assert_eq!(format_score(None), "-");
+    }
+
+    #[test]
+    fn test_truncate() {
+        assert_eq!(truncate("short", 19), "short");
+        assert_eq!(truncate("submission.py", 19), "submission.py");
+        assert_eq!(truncate("0123456789", 8), "01234...");
     }
 }
