@@ -19,6 +19,18 @@ use crate::models::{
 const SUBMISSION_POLL_INTERVAL_SECONDS: u64 = 5;
 const SUBMISSION_POLL_TIMEOUT_SECONDS: u64 = 60 * 60;
 
+/// Parse a run's `score` field, which the server may send either as a JSON
+/// number or as a JSON string (e.g. `0.0033` or `"0.0033"`). A plain
+/// `Value::as_f64()` returns `None` for the string form, which is why scores
+/// rendered as `-` in the submissions list/show views. Accept both forms.
+fn parse_score(value: &Value) -> Option<f64> {
+    match value {
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => s.parse::<f64>().ok(),
+        _ => None,
+    }
+}
+
 // Helper function to create a reusable reqwest client
 pub fn create_client(cli_id: Option<String>) -> Result<Client> {
     let mut default_headers = HeaderMap::new();
@@ -408,7 +420,7 @@ pub async fn get_user_submissions(
                 arr.iter()
                     .map(|r| UserSubmissionRun {
                         gpu_type: r["gpu_type"].as_str().unwrap_or("").to_string(),
-                        score: r["score"].as_f64(),
+                        score: parse_score(&r["score"]),
                     })
                     .collect()
             })
@@ -463,7 +475,7 @@ pub async fn get_user_submission(client: &Client, submission_id: i64) -> Result<
                     mode: r["mode"].as_str().unwrap_or("").to_string(),
                     secret: r["secret"].as_bool().unwrap_or(false),
                     runner: r["runner"].as_str().unwrap_or("").to_string(),
-                    score: r["score"].as_f64(),
+                    score: parse_score(&r["score"]),
                     passed: r["passed"].as_bool().unwrap_or(false),
                 })
                 .collect()
@@ -703,6 +715,33 @@ async fn submit_solution_background<P: AsRef<Path>>(
     }
 }
 
+/// Build a human-readable summary of the geomean leaderboard score(s) for a
+/// finished submission, or `None` if it has no scored `leaderboard` run.
+///
+/// The score the server reports for a `leaderboard`-mode run is the geometric
+/// mean (in seconds) of the per-shape benchmark means — i.e. the number the
+/// leaderboard ranks on. It is otherwise only visible buried in the runs JSON,
+/// so surface it on its own line(s).
+fn leaderboard_score_summary(details: &SubmissionDetails) -> Option<String> {
+    let lines: Vec<String> = details
+        .runs
+        .iter()
+        .filter(|run| run.mode == "leaderboard")
+        .filter_map(|run| {
+            run.score.map(|score| {
+                let scope = if run.secret { " (secret)" } else { " (public)" };
+                format!("Geomean score{} on {}: {} s", scope, run.runner, score)
+            })
+        })
+        .collect();
+
+    if lines.is_empty() {
+        None
+    } else {
+        Some(lines.join("\n"))
+    }
+}
+
 fn format_submission_details(details: &SubmissionDetails) -> Result<String> {
     let runs: Vec<Value> = details
         .runs
@@ -720,14 +759,20 @@ fn format_submission_details(details: &SubmissionDetails) -> Result<String> {
         })
         .collect();
 
-    serde_json::to_string_pretty(&serde_json::json!({
+    let json = serde_json::to_string_pretty(&serde_json::json!({
         "submission_id": details.id,
         "leaderboard": details.leaderboard_name,
         "file_name": details.file_name,
         "done": details.done,
         "runs": runs,
     }))
-    .map_err(|e| anyhow!("Failed to format submission result: {}", e))
+    .map_err(|e| anyhow!("Failed to format submission result: {}", e))?;
+
+    // Lead with the geomean score so it is not lost in the runs JSON.
+    match leaderboard_score_summary(details) {
+        Some(summary) => Ok(format!("{}\n\n{}", summary, json)),
+        None => Ok(json),
+    }
 }
 
 async fn submit_solution_streaming<P: AsRef<Path>>(
@@ -1231,5 +1276,84 @@ mod tests {
         assert_eq!(std::fs::read(&written_path).unwrap(), trace_data);
 
         std::env::set_current_dir(original_dir).unwrap();
+    }
+
+    #[test]
+    fn test_parse_score_accepts_number_and_string() {
+        use serde_json::json;
+
+        // The server sends score as a JSON string; older code only handled
+        // numbers, so string scores rendered as `-`. Both must parse now.
+        assert_eq!(parse_score(&json!("0.0033")), Some(0.0033));
+        assert_eq!(parse_score(&json!(0.0033)), Some(0.0033));
+
+        // Absent / null / non-numeric scores stay None.
+        assert_eq!(parse_score(&json!(null)), None);
+        assert_eq!(parse_score(&json!("")), None);
+        assert_eq!(parse_score(&json!("not-a-number")), None);
+        assert_eq!(parse_score(&Value::Null), None);
+    }
+
+    fn run(mode: &str, secret: bool, score: Option<f64>) -> SubmissionRun {
+        SubmissionRun {
+            start_time: None,
+            end_time: None,
+            mode: mode.to_string(),
+            secret,
+            runner: "B200".to_string(),
+            score,
+            passed: true,
+        }
+    }
+
+    fn details(runs: Vec<SubmissionRun>) -> SubmissionDetails {
+        SubmissionDetails {
+            id: 1,
+            leaderboard_id: 1,
+            leaderboard_name: "qr_v2".to_string(),
+            file_name: "submission.py".to_string(),
+            user_id: "u".to_string(),
+            submission_time: String::new(),
+            done: true,
+            code: String::new(),
+            runs,
+            job: None,
+        }
+    }
+
+    #[test]
+    fn test_leaderboard_score_summary_reports_geomean_scores() {
+        // Only the scored `leaderboard` runs are reported; test/benchmark and
+        // null-score runs are skipped.
+        let d = details(vec![
+            run("test", false, None),
+            run("benchmark", false, None),
+            run("leaderboard", false, Some(0.0066)),
+            run("leaderboard", true, Some(0.0018)),
+        ]);
+        let summary = leaderboard_score_summary(&d).expect("expected a score summary");
+        assert_eq!(
+            summary,
+            "Geomean score (public) on B200: 0.0066 s\n\
+             Geomean score (secret) on B200: 0.0018 s"
+        );
+
+        // And it is prepended to the formatted submission details.
+        let formatted = format_submission_details(&d).unwrap();
+        assert!(formatted.starts_with("Geomean score (public) on B200: 0.0066 s"));
+    }
+
+    #[test]
+    fn test_leaderboard_score_summary_none_without_scored_leaderboard_run() {
+        // A submission with no scored leaderboard run (e.g. test/benchmark
+        // mode, or scores not yet populated) yields no summary.
+        let d = details(vec![
+            run("test", false, None),
+            run("benchmark", false, Some(0.5)),
+            run("leaderboard", false, None),
+        ]);
+        assert!(leaderboard_score_summary(&d).is_none());
+        // format_submission_details still works, just without a summary header.
+        assert!(format_submission_details(&d).unwrap().starts_with('{'));
     }
 }
