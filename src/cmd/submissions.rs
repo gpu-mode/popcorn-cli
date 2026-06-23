@@ -36,14 +36,15 @@ pub async fn list_submissions(
             gpus.join(",")
         };
 
-        // Get best score (lowest)
+        // Get best score (lowest). Print full f64 precision (the shortest
+        // string that round-trips) rather than rounding to 4 decimals.
         let best_score = sub
             .runs
             .iter()
             .filter_map(|r| r.score)
             .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let score_display = best_score
-            .map(|s| format!("{:.4}", s))
+            .map(|s| s.to_string())
             .unwrap_or_else(|| "-".to_string());
 
         let time = truncate(&sub.submission_time, 19);
@@ -64,7 +65,7 @@ pub async fn list_submissions(
 }
 
 /// Show a specific submission with full details
-pub async fn show_submission(cli_id: String, submission_id: i64) -> Result<()> {
+pub async fn show_submission(cli_id: String, submission_id: i64, no_code: bool) -> Result<()> {
     let client = service::create_client(Some(cli_id))?;
     let sub = service::get_user_submission(&client, submission_id).await?;
 
@@ -87,7 +88,7 @@ pub async fn show_submission(cli_id: String, submission_id: i64) -> Result<()> {
         for run in &sub.runs {
             let score_str = run
                 .score
-                .map(|s| format!("{:.4}", s))
+                .map(|s| s.to_string())
                 .unwrap_or_else(|| "-".to_string());
             let status = if run.passed { "passed" } else { "failed" };
             let secret_marker = if run.secret { " [secret]" } else { "" };
@@ -103,9 +104,11 @@ pub async fn show_submission(cli_id: String, submission_id: i64) -> Result<()> {
         }
     }
 
-    println!("\nCode:");
-    println!("{}", "-".repeat(60));
-    println!("{}", sub.code);
+    if !no_code {
+        println!("\nCode:");
+        println!("{}", "-".repeat(60));
+        println!("{}", sub.code);
+    }
 
     Ok(())
 }
