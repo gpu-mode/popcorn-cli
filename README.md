@@ -5,9 +5,26 @@ A command-line interface tool for submitting solutions to the [gpumode.com](http
 
 Tested on linux and mac but should just work on Windows as well.
 
-## New: Nsight Compute Profiling
+## New: QR v2 Nsight Compute Profiling
 
-Profile your kernels with `--mode profile` and get detailed metrics. Currently only available for the NVFP4 Blackwell competition (Modal, which we use for other competitions, does not support NCU). See [docs/profiling.md](docs/profiling.md) for details.
+Profile QR v2 submissions on the hosted GPU Mode B200 Nsight Compute service.
+See [docs/profiling.md](docs/profiling.md) for a complete copy-paste flow.
+
+Quick QR v2 example:
+
+```bash
+curl -O https://raw.githubusercontent.com/gpu-mode/reference-kernels/main/problems/linalg/qr_v2/submission.py
+export POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run
+popcorn submit submission.py --leaderboard qr_v2 --profile-brev --benchmark-index 0 --no-tui
+```
+
+The CLI downloads and extracts the `.ncu-rep` file, prints a clickable terminal
+link to the report, and ends with a macOS command that opens it in Nsight
+Compute:
+
+```bash
+open -a "NVIDIA Nsight Compute" profile.0-.../profile.ncu-rep
+```
 
 ## [NEW] Submit To The Linear Algebra Competition
 
@@ -101,6 +118,12 @@ popcorn submit solution.py
 
 # Direct submission with all options
 popcorn submit --leaderboard grayscale_v2 --gpu A100 --mode leaderboard solution.py
+
+# Nsight Compute profile on the hosted GPU Mode B200 profiler
+POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run popcorn submit --leaderboard qr_v2 --profile-brev solution.py
+
+# Profile one QR v2 benchmark shape
+POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run popcorn submit --leaderboard qr_v2 --profile-brev --benchmark-index 0 solution.py
 
 # Plain output mode (no TUI, good for CI/scripts)
 popcorn submit --no-tui --leaderboard grayscale_v2 --gpu A100 --mode test solution.py
