@@ -7,7 +7,27 @@ Tested on linux and mac but should just work on Windows as well.
 
 ## New: Nsight Compute Profiling
 
-Profile your kernels with `--mode profile` and get detailed metrics. Currently only available for the NVFP4 Blackwell competition (Modal, which we use for other competitions, does not support NCU). See [docs/profiling.md](docs/profiling.md) for details.
+Profile your kernels with `--mode profile` and get detailed metrics. Modal does not expose NCU, so Modal-ranked competitions can use the Brev-backed B200 profiler. See [docs/profiling.md](docs/profiling.md) for details.
+
+For GPU Mode competitions that normally rank on Modal, you can request a Brev B200 Nsight Compute run without changing your `submission.py`:
+
+```bash
+POPCORN_BREV_PROFILER_URL=http://127.0.0.1:8765 popcorn-cli submission.py --profile-brev
+```
+
+`--profile-brev` requires `POPCORN_BREV_PROFILER_URL` or `BREV_PROFILER_URL`.
+Do not point it at a public shared service until the Brev worker runs
+untrusted submissions in a per-job container or equivalent locked-down
+environment with no SSH keys, operator secrets, or other users' submissions
+mounted.
+
+The CLI downloads and extracts the `.ncu-rep` file, prints a clickable terminal
+link to the report, and ends with a macOS command that opens it in Nsight
+Compute:
+
+```bash
+open -a "NVIDIA Nsight Compute" profile.0-.../profile.ncu-rep
+```
 
 ## [NEW] Submit To The Linear Algebra Competition
 
@@ -101,6 +121,12 @@ popcorn submit solution.py
 
 # Direct submission with all options
 popcorn submit --leaderboard grayscale_v2 --gpu A100 --mode leaderboard solution.py
+
+# Nsight Compute profile on the GPU Mode Brev B200
+POPCORN_BREV_PROFILER_URL=http://127.0.0.1:8765 popcorn submit --leaderboard grayscale_v2 --profile-brev solution.py
+
+# Profile one benchmark shape, useful for quick QR demos
+POPCORN_BREV_PROFILER_URL=http://127.0.0.1:8765 popcorn submit --leaderboard qr --profile-brev --benchmark-index 0 solution.py
 
 # Plain output mode (no TUI, good for CI/scripts)
 popcorn submit --no-tui --leaderboard grayscale_v2 --gpu A100 --mode test solution.py

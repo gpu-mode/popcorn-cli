@@ -6,10 +6,13 @@ use reqwest::multipart::{Form, Part};
 use reqwest::Client;
 use serde_json::Value;
 use std::env;
-use std::path::Path;
+use std::fs::File as StdFile;
+use std::io::Cursor;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::time::sleep;
+use zip::ZipArchive;
 
 use crate::models::{
     GpuItem, LeaderboardItem, SubmissionDetails, SubmissionJobStatus, SubmissionRun,
@@ -600,6 +603,310 @@ pub async fn submit_solution<P: AsRef<Path>>(
         on_log,
     )
     .await
+}
+
+pub async fn profile_brev_solution<P: AsRef<Path>>(
+    client: &Client,
+    filepath: P,
+    file_content: &[u8],
+    leaderboard: &str,
+    benchmark_index: Option<usize>,
+    on_log: Option<Box<dyn Fn(String) + Send + Sync>>,
+) -> Result<String> {
+    let base_url = env::var("POPCORN_BREV_PROFILER_URL")
+        .or_else(|_| env::var("BREV_PROFILER_URL"))
+        .map_err(|_| {
+            anyhow!(
+                "POPCORN_BREV_PROFILER_URL or BREV_PROFILER_URL is not set. Configure a hardened Brev profiler endpoint before using --profile-brev."
+            )
+        })?;
+    let base_url = base_url.trim_end_matches('/');
+
+    let filename = filepath
+        .as_ref()
+        .file_name()
+        .ok_or_else(|| anyhow!("Invalid filepath"))?
+        .to_string_lossy();
+
+    let part = Part::bytes(file_content.to_vec()).file_name(filename.to_string());
+    let mut form = Form::new()
+        .part("file", part)
+        .text("leaderboard", leaderboard.to_string());
+    if let Some(index) = benchmark_index {
+        form = form.text("benchmark_index", index.to_string());
+    }
+
+    let resp = client
+        .post(format!("{}/profile", base_url))
+        .multipart(form)
+        .timeout(Duration::from_secs(60))
+        .send()
+        .await?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(anyhow!(
+            "Profiler returned status {}: {}",
+            status,
+            response_error_text(resp).await?
+        ));
+    }
+
+    let accepted: Value = resp.json().await?;
+    let job_id = accepted
+        .get("job_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("Profiler did not return a job_id"))?
+        .to_string();
+
+    if let Some(ref cb) = on_log {
+        cb(format!(
+            "Profile job {} accepted. Waiting for results...",
+            job_id
+        ));
+    }
+
+    let mut elapsed = 0;
+    loop {
+        let resp = match client
+            .get(format!("{}/jobs/{}", base_url, job_id))
+            .timeout(Duration::from_secs(30))
+            .send()
+            .await
+        {
+            Ok(resp) => resp,
+            Err(err) => {
+                if elapsed >= SUBMISSION_POLL_TIMEOUT_SECONDS {
+                    return Err(err.into());
+                }
+                if let Some(ref cb) = on_log {
+                    cb(format!(
+                        "Profile job {} status poll failed: {}. Retrying...",
+                        job_id, err
+                    ));
+                }
+                sleep(Duration::from_secs(SUBMISSION_POLL_INTERVAL_SECONDS)).await;
+                elapsed += SUBMISSION_POLL_INTERVAL_SECONDS;
+                continue;
+            }
+        };
+
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "Profiler status returned {}: {}",
+                status,
+                response_error_text(resp).await?
+            ));
+        }
+
+        let job: Value = resp.json().await?;
+        let job_status = job
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        let queue_position = job.get("queue_position").and_then(|v| v.as_i64());
+
+        if let Some(ref cb) = on_log {
+            match queue_position {
+                Some(pos) => cb(format!(
+                    "Profile job {} status: {} (queue position {}, {}s)",
+                    job_id, job_status, pos, elapsed
+                )),
+                None => cb(format!(
+                    "Profile job {} status: {} ({}s)",
+                    job_id, job_status, elapsed
+                )),
+            }
+        }
+
+        match job_status {
+            "succeeded" => {
+                let artifacts = download_profile_artifacts(client, base_url, &job).await?;
+                let mut result = job;
+                result["downloaded_artifacts"] = Value::Array(
+                    artifacts
+                        .iter()
+                        .map(|artifact| artifact.to_json())
+                        .collect(),
+                );
+                return serde_json::to_string_pretty(&result)
+                    .map_err(|e| anyhow!("Failed to format profile result: {}", e));
+            }
+            "failed" | "timed_out" => {
+                let error = job
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("No error details were provided");
+                return Err(anyhow!("Profile job {} {}: {}", job_id, job_status, error));
+            }
+            _ => {}
+        }
+
+        if elapsed >= SUBMISSION_POLL_TIMEOUT_SECONDS {
+            return Err(anyhow!(
+                "Timed out waiting for profile job {} after {} seconds",
+                job_id,
+                SUBMISSION_POLL_TIMEOUT_SECONDS
+            ));
+        }
+
+        sleep(Duration::from_secs(SUBMISSION_POLL_INTERVAL_SECONDS)).await;
+        elapsed += SUBMISSION_POLL_INTERVAL_SECONDS;
+    }
+}
+
+#[derive(Debug)]
+struct DownloadedProfileArtifact {
+    zip_path: PathBuf,
+    reports: Vec<PathBuf>,
+}
+
+impl DownloadedProfileArtifact {
+    fn to_json(&self) -> Value {
+        let reports: Vec<Value> = self
+            .reports
+            .iter()
+            .map(|path| {
+                serde_json::json!({
+                    "path": path.display().to_string(),
+                    "file_url": file_url(path),
+                    "open_command": format!(
+                        "open -a \"NVIDIA Nsight Compute\" {}",
+                        shell_quote(&path.display().to_string())
+                    ),
+                    "ncu_ui_command": format!("ncu-ui {}", shell_quote(&path.display().to_string())),
+                })
+            })
+            .collect();
+
+        serde_json::json!({
+            "zip_path": self.zip_path.display().to_string(),
+            "reports": reports,
+        })
+    }
+}
+
+async fn download_profile_artifacts(
+    client: &Client,
+    base_url: &str,
+    job: &Value,
+) -> Result<Vec<DownloadedProfileArtifact>> {
+    let artifacts = job
+        .get("artifacts")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow!("Profiler job did not include artifacts"))?;
+
+    let mut saved = Vec::new();
+    for artifact in artifacts {
+        let name = artifact
+            .get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("Profiler artifact missing name"))?;
+        let url = artifact
+            .get("url")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("Profiler artifact missing url"))?;
+        let artifact_url = if url.starts_with("http://") || url.starts_with("https://") {
+            url.to_string()
+        } else {
+            format!("{}{}", base_url, url)
+        };
+        let bytes = client
+            .get(artifact_url)
+            .timeout(Duration::from_secs(120))
+            .send()
+            .await?
+            .error_for_status()?
+            .bytes()
+            .await?;
+        let zip_path = PathBuf::from(name);
+        std::fs::write(&zip_path, bytes.as_ref())
+            .map_err(|e| anyhow!("Failed to write profile artifact {}: {}", name, e))?;
+        let reports = extract_ncu_reports(&zip_path, bytes.as_ref())?;
+        saved.push(DownloadedProfileArtifact { zip_path, reports });
+    }
+    Ok(saved)
+}
+
+fn extract_ncu_reports(zip_path: &Path, bytes: &[u8]) -> Result<Vec<PathBuf>> {
+    let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(|e| {
+        anyhow!(
+            "Failed to read profile artifact {}: {}",
+            zip_path.display(),
+            e
+        )
+    })?;
+    let extract_dir = zip_path.with_extension("");
+    std::fs::create_dir_all(&extract_dir).map_err(|e| {
+        anyhow!(
+            "Failed to create profile report directory {}: {}",
+            extract_dir.display(),
+            e
+        )
+    })?;
+
+    let mut reports = Vec::new();
+    for idx in 0..archive.len() {
+        let mut entry = archive.by_index(idx).map_err(|e| {
+            anyhow!(
+                "Failed to read profile artifact entry in {}: {}",
+                zip_path.display(),
+                e
+            )
+        })?;
+        if !entry.name().ends_with(".ncu-rep") {
+            continue;
+        }
+
+        let file_name = Path::new(entry.name())
+            .file_name()
+            .ok_or_else(|| anyhow!("Profile artifact contains an invalid report path"))?;
+        let mut report_path = extract_dir.join(file_name);
+        if report_path.exists() {
+            let stem = report_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("profile");
+            report_path = extract_dir.join(format!("{}-{}.ncu-rep", stem, idx));
+        }
+
+        let mut output = StdFile::create(&report_path)
+            .map_err(|e| anyhow!("Failed to create {}: {}", report_path.display(), e))?;
+        std::io::copy(&mut entry, &mut output)
+            .map_err(|e| anyhow!("Failed to extract {}: {}", report_path.display(), e))?;
+        reports.push(report_path);
+    }
+    Ok(reports)
+}
+
+fn file_url(path: &Path) -> String {
+    let absolute = path
+        .canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf())
+        .display()
+        .to_string();
+    format!(
+        "file://{}",
+        urlencoding::encode(&absolute).replace("%2F", "/")
+    )
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+async fn response_error_text(resp: reqwest::Response) -> Result<String> {
+    let text = resp.text().await?;
+    Ok(serde_json::from_str::<Value>(&text)
+        .ok()
+        .and_then(|v| {
+            v.get("detail")
+                .or_else(|| v.get("message"))
+                .and_then(|d| d.as_str())
+                .map(str::to_string)
+        })
+        .unwrap_or(text))
 }
 
 async fn submit_solution_background<P: AsRef<Path>>(

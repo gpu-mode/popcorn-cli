@@ -62,6 +62,14 @@ pub struct Cli {
     #[arg(long)]
     pub mode: Option<String>,
 
+    /// Profile on the GPU Mode Brev B200 and save the Nsight Compute trace locally
+    #[arg(long)]
+    pub profile_brev: bool,
+
+    /// Optional: Profile a single benchmark index when using --profile-brev
+    #[arg(long)]
+    pub benchmark_index: Option<usize>,
+
     // Optional: Specify output file
     #[arg(short, long)]
     pub output: Option<String>,
@@ -137,6 +145,14 @@ enum Commands {
         #[arg(long)]
         mode: Option<String>,
 
+        /// Profile on the GPU Mode Brev B200 and save the Nsight Compute trace locally
+        #[arg(long)]
+        profile_brev: bool,
+
+        /// Optional: Profile a single benchmark index when using --profile-brev
+        #[arg(long)]
+        benchmark_index: Option<usize>,
+
         // Optional: Specify output file
         #[arg(short, long)]
         output: Option<String>,
@@ -184,6 +200,8 @@ pub async fn execute(cli: Cli) -> Result<()> {
             gpu,
             leaderboard,
             mode,
+            profile_brev,
+            benchmark_index,
             output,
             no_tui,
         }) => {
@@ -198,23 +216,34 @@ pub async fn execute(cli: Cli) -> Result<()> {
 
             // Use filepath from Submit command first, fallback to top-level filepath
             let final_filepath = filepath.or(cli.filepath);
+            let final_gpu = if profile_brev {
+                Some("B200_Brev".to_string())
+            } else {
+                gpu
+            };
+            let final_mode = if profile_brev {
+                Some("profile".to_string())
+            } else {
+                mode
+            };
 
-            if no_tui {
+            if no_tui || profile_brev {
                 submit::run_submit_plain(
                     final_filepath, // Resolved filepath
-                    gpu,            // From Submit command
+                    final_gpu,      // From Submit command
                     leaderboard,    // From Submit command
-                    mode,           // From Submit command
+                    final_mode,     // From Submit command
                     cli_id,
+                    benchmark_index.or(cli.benchmark_index),
                     output, // From Submit command
                 )
                 .await
             } else {
                 submit::run_submit_tui(
                     final_filepath, // Resolved filepath
-                    gpu,            // From Submit command
+                    final_gpu,      // From Submit command
                     leaderboard,    // From Submit command
-                    mode,           // From Submit command
+                    final_mode,     // From Submit command
                     cli_id,
                     output, // From Submit command
                 )
@@ -269,7 +298,9 @@ pub async fn execute(cli: Cli) -> Result<()> {
         }
         None => {
             // Check if any of the submission-related flags were used at the top level
-            if cli.gpu.is_some() || cli.leaderboard.is_some() || cli.mode.is_some() {
+            if !cli.profile_brev
+                && (cli.gpu.is_some() || cli.leaderboard.is_some() || cli.mode.is_some())
+            {
                 return Err(anyhow!(
                     "Please use the 'submit' subcommand when specifying submission options:\n\
                     popcorn-cli submit [--gpu GPU] [--leaderboard LEADERBOARD] [--mode MODE] FILEPATH"
@@ -287,16 +318,29 @@ pub async fn execute(cli: Cli) -> Result<()> {
                     )
                 })?;
 
-                // Run TUI with only filepath, no other options
-                submit::run_submit_tui(
-                    Some(top_level_filepath),
-                    None, // No GPU option
-                    None, // No leaderboard option
-                    None, // No mode option
-                    cli_id,
-                    None, // No output option
-                )
-                .await
+                if cli.profile_brev {
+                    submit::run_submit_plain(
+                        Some(top_level_filepath),
+                        Some("B200_Brev".to_string()),
+                        cli.leaderboard,
+                        Some("profile".to_string()),
+                        cli_id,
+                        cli.benchmark_index,
+                        cli.output,
+                    )
+                    .await
+                } else {
+                    // Run TUI with only filepath, no other options
+                    submit::run_submit_tui(
+                        Some(top_level_filepath),
+                        None, // No GPU option
+                        None, // No leaderboard option
+                        None, // No mode option
+                        cli_id,
+                        None, // No output option
+                    )
+                    .await
+                }
             } else {
                 Err(anyhow!(
                     "No command or submission file specified. Use --help for usage."

@@ -9,6 +9,7 @@ use ratatui::prelude::*;
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
+use serde_json::Value;
 use tokio::task::JoinHandle;
 
 use crate::models::{AppState, GpuItem, LeaderboardItem, SubmissionModeItem};
@@ -686,6 +687,7 @@ pub async fn run_submit_plain(
     leaderboard: Option<String>,
     mode: Option<String>,
     cli_id: String,
+    benchmark_index: Option<usize>,
     output: Option<String>,
 ) -> Result<()> {
     let file_to_submit = match filepath {
@@ -747,18 +749,34 @@ pub async fn run_submit_plain(
 
     // Create client and submit
     let client = service::create_client(Some(cli_id))?;
-    let result = service::submit_solution(
-        &client,
-        &file_to_submit,
-        &file_content,
-        &final_leaderboard,
-        &final_gpu,
-        &final_mode,
-        Some(Box::new(|msg| {
-            eprintln!("{}", msg);
-        })),
-    )
-    .await?;
+    let result = if final_mode.eq_ignore_ascii_case("profile")
+        && final_gpu.eq_ignore_ascii_case("B200_Brev")
+    {
+        service::profile_brev_solution(
+            &client,
+            &file_to_submit,
+            &file_content,
+            &final_leaderboard,
+            benchmark_index,
+            Some(Box::new(|msg| {
+                eprintln!("{}", msg);
+            })),
+        )
+        .await?
+    } else {
+        service::submit_solution(
+            &client,
+            &file_to_submit,
+            &file_content,
+            &final_leaderboard,
+            &final_gpu,
+            &final_mode,
+            Some(Box::new(|msg| {
+                eprintln!("{}", msg);
+            })),
+        )
+        .await?
+    };
 
     // Clean up the result text
     let trimmed = result.trim();
@@ -767,6 +785,8 @@ pub async fn run_submit_plain(
     } else {
         trimmed
     };
+
+    let profile_report_links = profile_report_links(content);
 
     let content = content.replace("\\n", "\n");
 
@@ -783,6 +803,73 @@ pub async fn run_submit_plain(
 
     // Print to stdout
     println!("\n{}", content);
+    print_profile_report_links(profile_report_links);
 
     Ok(())
+}
+
+#[derive(Debug)]
+struct ProfileReportLink {
+    file_url: String,
+    label: String,
+    open_command: String,
+}
+
+fn profile_report_links(content: &str) -> Vec<ProfileReportLink> {
+    let Ok(result) = serde_json::from_str::<Value>(content) else {
+        return Vec::new();
+    };
+    let Some(artifacts) = result
+        .get("downloaded_artifacts")
+        .and_then(|value| value.as_array())
+    else {
+        return Vec::new();
+    };
+
+    let mut links = Vec::new();
+    for artifact in artifacts {
+        let Some(reports) = artifact.get("reports").and_then(|value| value.as_array()) else {
+            continue;
+        };
+        for report in reports {
+            let Some(file_url) = report.get("file_url").and_then(|value| value.as_str()) else {
+                continue;
+            };
+            let label = report
+                .get("path")
+                .and_then(|value| value.as_str())
+                .unwrap_or("profile.ncu-rep");
+            let open_command = report
+                .get("open_command")
+                .and_then(|value| value.as_str())
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| {
+                    format!("open -a \"NVIDIA Nsight Compute\" {}", shell_quote(label))
+                });
+            links.push(ProfileReportLink {
+                file_url: file_url.to_string(),
+                label: label.to_string(),
+                open_command,
+            });
+        }
+    }
+    links
+}
+
+fn print_profile_report_links(links: Vec<ProfileReportLink>) {
+    for link in links {
+        println!(
+            "\nOpen in Nsight Compute: {}",
+            terminal_link(&link.file_url, &link.label)
+        );
+        println!("{}", link.open_command);
+    }
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn terminal_link(url: &str, label: &str) -> String {
+    format!("\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\", url, label)
 }
