@@ -81,12 +81,20 @@ pub struct SubmissionDetails {
     pub code: String,
     pub runs: Vec<SubmissionRun>,
     pub job: Option<SubmissionJobStatus>,
+    pub runner_queue: Option<RunnerQueueStatus>,
 }
 
 #[derive(Clone, Debug)]
 pub struct SubmissionJobStatus {
     pub status: Option<String>,
     pub error: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct RunnerQueueStatus {
+    pub runner: Option<String>,
+    pub gpu: Option<String>,
+    pub queued_jobs: Option<i64>,
 }
 
 /// A single run within a submission
