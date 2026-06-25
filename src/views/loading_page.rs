@@ -2,7 +2,7 @@ use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Layout, Rect},
     style::{Color, Stylize},
-    widgets::{Block, Gauge, Padding, Paragraph, StatefulWidget, Widget},
+    widgets::{Block, Gauge, Padding, Paragraph, StatefulWidget, Widget, Wrap},
 };
 
 #[derive(Debug, Default, Clone)]
@@ -10,6 +10,7 @@ pub struct LoadingPageState {
     pub loop_count: u16,
     pub progress_column: u16,
     pub progress_bar: f64,
+    pub status_text: Option<String>,
 }
 
 #[derive(Default, Debug, PartialEq, Eq, Clone)]
@@ -56,6 +57,10 @@ fn render_gauge(area: Rect, buf: &mut Buffer, state: &mut LoadingPageState) {
 }
 
 fn get_footer_text(state: &LoadingPageState) -> String {
+    if let Some(status_text) = &state.status_text {
+        return status_text.clone();
+    }
+
     let percentage = state.progress_bar;
 
     if state.loop_count > 0 {
@@ -77,6 +82,7 @@ fn render_footer(area: Rect, buf: &mut Buffer, state: &LoadingPageState) {
         .alignment(Alignment::Center)
         .fg(Color::White)
         .bold()
+        .wrap(Wrap { trim: true })
         .block(blk);
 
     text.render(area, buf);

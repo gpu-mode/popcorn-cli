@@ -9,6 +9,7 @@ use ratatui::prelude::*;
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use crate::models::{AppState, GpuItem, LeaderboardItem, SubmissionModeItem};
@@ -41,6 +42,7 @@ pub struct App {
     pub submission_task: Option<JoinHandle<Result<String, anyhow::Error>>>,
     pub leaderboards_task: Option<JoinHandle<Result<Vec<LeaderboardItem>, anyhow::Error>>>,
     pub gpus_task: Option<JoinHandle<Result<Vec<GpuItem>, anyhow::Error>>>,
+    pub submission_log_rx: Option<mpsc::UnboundedReceiver<String>>,
 
     pub loading_page_state: LoadingPageState,
 
@@ -300,6 +302,9 @@ impl App {
         let mut file_content = Vec::new();
         file.read_to_end(&mut file_content)?;
 
+        let (log_tx, log_rx) = mpsc::unbounded_channel();
+        self.submission_log_rx = Some(log_rx);
+
         self.submission_task = Some(tokio::spawn(async move {
             service::submit_solution(
                 &client,
@@ -308,11 +313,21 @@ impl App {
                 &leaderboard,
                 &gpu,
                 &mode,
-                None,
+                Some(Box::new(move |msg| {
+                    let _ = log_tx.send(msg);
+                })),
             )
             .await
         }));
         Ok(())
+    }
+
+    pub fn drain_submission_logs(&mut self) {
+        if let Some(rx) = &mut self.submission_log_rx {
+            while let Ok(message) = rx.try_recv() {
+                self.loading_page_state.status_text = Some(message);
+            }
+        }
     }
 
     pub async fn check_leaderboard_task(&mut self) {
@@ -610,6 +625,7 @@ pub async fn run_submit_tui(
 
         app.check_leaderboard_task().await;
         app.check_gpu_task().await;
+        app.drain_submission_logs();
         app.check_submission_task().await;
 
         app.update_loading_page_state(terminal.size()?.width);

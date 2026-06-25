@@ -12,8 +12,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::time::sleep;
 
 use crate::models::{
-    GpuItem, LeaderboardItem, SubmissionDetails, SubmissionJobStatus, SubmissionRun,
-    UserSubmission, UserSubmissionRun,
+    GpuItem, LeaderboardItem, SubmissionDetails, SubmissionJobStatus, SubmissionQueueStatus,
+    SubmissionRun, UserSubmission, UserSubmissionRun,
 };
 
 const SUBMISSION_POLL_INTERVAL_SECONDS: u64 = 5;
@@ -28,6 +28,49 @@ fn parse_score(value: &Value) -> Option<f64> {
         Value::Number(n) => n.as_f64(),
         Value::String(s) => s.parse::<f64>().ok(),
         _ => None,
+    }
+}
+
+fn parse_submission_queue(value: Option<&Value>) -> Option<SubmissionQueueStatus> {
+    let queue = value?;
+    if queue.is_null() {
+        return None;
+    }
+
+    Some(SubmissionQueueStatus {
+        stage: queue
+            .get("stage")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        message: queue
+            .get("message")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        position: queue.get("position").and_then(|v| v.as_i64()),
+        jobs_ahead: queue.get("jobs_ahead").and_then(|v| v.as_i64()),
+    })
+}
+
+fn submission_queue_summary(queue: Option<&SubmissionQueueStatus>) -> Option<String> {
+    let queue = queue?;
+    let message = queue
+        .message
+        .as_deref()
+        .or(match queue.stage.as_deref() {
+            Some("queued") => Some("In KernelBot queue"),
+            Some("dispatched") => Some("Job dispatched to Modal/GitHub runner"),
+            _ => None,
+        })
+        .unwrap_or("Submission status unknown");
+
+    match queue.position {
+        Some(position) => Some(format!(
+            "{} (position {}, {} ahead)",
+            message,
+            position,
+            queue.jobs_ahead.unwrap_or(position.saturating_sub(1)),
+        )),
+        None => Some(message.to_string()),
     }
 }
 
@@ -504,6 +547,7 @@ pub async fn get_user_submission(client: &Client, submission_id: i64) -> Result<
         code: sub["code"].as_str().unwrap_or("").to_string(),
         runs,
         job,
+        queue: parse_submission_queue(sub.get("queue")),
     })
 }
 
@@ -659,10 +703,18 @@ async fn submit_solution_background<P: AsRef<Path>>(
         .ok_or_else(|| anyhow!("Server did not return a submission id"))?;
 
     if let Some(ref cb) = on_log {
-        cb(format!(
-            "Submission {} accepted. Waiting for results...",
-            submission_id
-        ));
+        let queue = parse_submission_queue(accepted.get("queue"));
+        if let Some(queue_summary) = submission_queue_summary(queue.as_ref()) {
+            cb(format!(
+                "Submission {} accepted: {}. Waiting for results...",
+                submission_id, queue_summary
+            ));
+        } else {
+            cb(format!(
+                "Submission {} accepted. Waiting for results...",
+                submission_id
+            ));
+        }
     }
 
     let mut elapsed = 0;
@@ -675,10 +727,17 @@ async fn submit_solution_background<P: AsRef<Path>>(
             .unwrap_or(if details.done { "done" } else { "pending" });
 
         if let Some(ref cb) = on_log {
-            cb(format!(
-                "Submission {} status: {} ({}s)",
-                submission_id, job_status, elapsed
-            ));
+            if let Some(queue_summary) = submission_queue_summary(details.queue.as_ref()) {
+                cb(format!(
+                    "Submission {} status: {} - {} ({}s)",
+                    submission_id, job_status, queue_summary, elapsed
+                ));
+            } else {
+                cb(format!(
+                    "Submission {} status: {} ({}s)",
+                    submission_id, job_status, elapsed
+                ));
+            }
         }
 
         match job_status {
@@ -1318,7 +1377,26 @@ mod tests {
             code: String::new(),
             runs,
             job: None,
+            queue: None,
         }
+    }
+
+    #[test]
+    fn test_submission_queue_summary_reports_position() {
+        use serde_json::json;
+
+        let queue = parse_submission_queue(Some(&json!({
+            "stage": "queued",
+            "message": "In KernelBot queue",
+            "position": 3,
+            "jobs_ahead": 2
+        })))
+        .expect("expected queue");
+
+        assert_eq!(
+            submission_queue_summary(Some(&queue)).unwrap(),
+            "In KernelBot queue (position 3, 2 ahead)"
+        );
     }
 
     #[test]
