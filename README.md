@@ -18,9 +18,9 @@ export POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v
 popcorn submit submission.py --leaderboard qr_v2 --profile-brev --benchmark-index 0 --no-tui
 ```
 
-The CLI downloads and extracts the `.ncu-rep` file, prints a clickable terminal
-link to the report, and ends with a macOS command that opens it in Nsight
-Compute:
+The CLI downloads and extracts `ncu-details.txt` and `ncu-details.csv` for
+agent-readable analysis. It also extracts the optional `.ncu-rep` GUI report and
+ends with a macOS command that opens it in Nsight Compute:
 
 ```bash
 open -a "NVIDIA Nsight Compute" profile.0-.../profile.ncu-rep
