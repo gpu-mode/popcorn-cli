@@ -795,11 +795,22 @@ pub async fn profile_brev_solution<P: AsRef<Path>>(
 #[derive(Debug)]
 struct DownloadedProfileArtifact {
     zip_path: PathBuf,
+    details: Vec<PathBuf>,
     reports: Vec<PathBuf>,
 }
 
 impl DownloadedProfileArtifact {
     fn to_json(&self) -> Value {
+        let details: Vec<Value> = self
+            .details
+            .iter()
+            .map(|path| {
+                serde_json::json!({
+                    "path": path.display().to_string(),
+                    "file_url": file_url(path),
+                })
+            })
+            .collect();
         let reports: Vec<Value> = self
             .reports
             .iter()
@@ -818,6 +829,7 @@ impl DownloadedProfileArtifact {
 
         serde_json::json!({
             "zip_path": self.zip_path.display().to_string(),
+            "details": details,
             "reports": reports,
         })
     }
@@ -859,13 +871,23 @@ async fn download_profile_artifacts(
         let zip_path = PathBuf::from(name);
         std::fs::write(&zip_path, bytes.as_ref())
             .map_err(|e| anyhow!("Failed to write profile artifact {}: {}", name, e))?;
-        let reports = extract_ncu_reports(&zip_path, bytes.as_ref())?;
-        saved.push(DownloadedProfileArtifact { zip_path, reports });
+        let extracted = extract_profile_artifacts(&zip_path, bytes.as_ref())?;
+        saved.push(DownloadedProfileArtifact {
+            zip_path,
+            details: extracted.details,
+            reports: extracted.reports,
+        });
     }
     Ok(saved)
 }
 
-fn extract_ncu_reports(zip_path: &Path, bytes: &[u8]) -> Result<Vec<PathBuf>> {
+#[derive(Debug)]
+struct ExtractedProfileArtifacts {
+    details: Vec<PathBuf>,
+    reports: Vec<PathBuf>,
+}
+
+fn extract_profile_artifacts(zip_path: &Path, bytes: &[u8]) -> Result<ExtractedProfileArtifacts> {
     let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(|e| {
         anyhow!(
             "Failed to read profile artifact {}: {}",
@@ -882,6 +904,7 @@ fn extract_ncu_reports(zip_path: &Path, bytes: &[u8]) -> Result<Vec<PathBuf>> {
         )
     })?;
 
+    let mut details = Vec::new();
     let mut reports = Vec::new();
     for idx in 0..archive.len() {
         let mut entry = archive.by_index(idx).map_err(|e| {
@@ -891,29 +914,41 @@ fn extract_ncu_reports(zip_path: &Path, bytes: &[u8]) -> Result<Vec<PathBuf>> {
                 e
             )
         })?;
-        if !entry.name().ends_with(".ncu-rep") {
+        if !entry.name().ends_with(".ncu-rep")
+            && !entry.name().ends_with("ncu-details.txt")
+            && !entry.name().ends_with("ncu-details.csv")
+        {
             continue;
         }
 
         let file_name = Path::new(entry.name())
             .file_name()
             .ok_or_else(|| anyhow!("Profile artifact contains an invalid report path"))?;
-        let mut report_path = extract_dir.join(file_name);
-        if report_path.exists() {
-            let stem = report_path
+        let mut output_path = extract_dir.join(file_name);
+        if output_path.exists() {
+            let stem = output_path
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("profile");
-            report_path = extract_dir.join(format!("{}-{}.ncu-rep", stem, idx));
+            let extension = output_path
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|ext| format!(".{}", ext))
+                .unwrap_or_default();
+            output_path = extract_dir.join(format!("{}-{}{}", stem, idx, extension));
         }
 
-        let mut output = StdFile::create(&report_path)
-            .map_err(|e| anyhow!("Failed to create {}: {}", report_path.display(), e))?;
+        let mut output = StdFile::create(&output_path)
+            .map_err(|e| anyhow!("Failed to create {}: {}", output_path.display(), e))?;
         std::io::copy(&mut entry, &mut output)
-            .map_err(|e| anyhow!("Failed to extract {}: {}", report_path.display(), e))?;
-        reports.push(report_path);
+            .map_err(|e| anyhow!("Failed to extract {}: {}", output_path.display(), e))?;
+        if output_path.extension().and_then(|s| s.to_str()) == Some("ncu-rep") {
+            reports.push(output_path);
+        } else {
+            details.push(output_path);
+        }
     }
-    Ok(reports)
+    Ok(ExtractedProfileArtifacts { details, reports })
 }
 
 fn file_url(path: &Path) -> String {

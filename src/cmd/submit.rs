@@ -812,7 +812,14 @@ pub async fn run_submit_plain(
 struct ProfileReportLink {
     file_url: String,
     label: String,
-    open_command: String,
+    open_command: Option<String>,
+    kind: ProfileArtifactKind,
+}
+
+#[derive(Debug)]
+enum ProfileArtifactKind {
+    Details,
+    Report,
 }
 
 fn profile_report_links(content: &str) -> Vec<ProfileReportLink> {
@@ -828,6 +835,24 @@ fn profile_report_links(content: &str) -> Vec<ProfileReportLink> {
 
     let mut links = Vec::new();
     for artifact in artifacts {
+        if let Some(details) = artifact.get("details").and_then(|value| value.as_array()) {
+            for detail in details {
+                let Some(file_url) = detail.get("file_url").and_then(|value| value.as_str()) else {
+                    continue;
+                };
+                let label = detail
+                    .get("path")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("ncu-details.txt");
+                links.push(ProfileReportLink {
+                    file_url: file_url.to_string(),
+                    label: label.to_string(),
+                    open_command: None,
+                    kind: ProfileArtifactKind::Details,
+                });
+            }
+        }
+
         let Some(reports) = artifact.get("reports").and_then(|value| value.as_array()) else {
             continue;
         };
@@ -849,7 +874,8 @@ fn profile_report_links(content: &str) -> Vec<ProfileReportLink> {
             links.push(ProfileReportLink {
                 file_url: file_url.to_string(),
                 label: label.to_string(),
-                open_command,
+                open_command: Some(open_command),
+                kind: ProfileArtifactKind::Report,
             });
         }
     }
@@ -858,11 +884,23 @@ fn profile_report_links(content: &str) -> Vec<ProfileReportLink> {
 
 fn print_profile_report_links(links: Vec<ProfileReportLink>) {
     for link in links {
-        println!(
-            "\nOpen in Nsight Compute: {}",
-            terminal_link(&link.file_url, &link.label)
-        );
-        println!("{}", link.open_command);
+        match link.kind {
+            ProfileArtifactKind::Details => {
+                println!(
+                    "\nNCU details for agents: {}",
+                    terminal_link(&link.file_url, &link.label)
+                );
+            }
+            ProfileArtifactKind::Report => {
+                println!(
+                    "\nOpen in Nsight Compute: {}",
+                    terminal_link(&link.file_url, &link.label)
+                );
+                if let Some(open_command) = link.open_command {
+                    println!("{}", open_command);
+                }
+            }
+        }
     }
 }
 

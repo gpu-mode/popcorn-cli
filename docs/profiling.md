@@ -1,7 +1,8 @@
 # QR v2 Nsight Compute Profiling
 
 This profiles the GPU Mode QR v2 problem from `reference-kernels` and downloads
-an Nsight Compute `.ncu-rep` report that you can open locally.
+Nsight Compute details that AI agents can read directly. The full `.ncu-rep`
+GUI report is still included for local inspection.
 
 ## 1. Install and Register
 
@@ -45,16 +46,21 @@ The first QR v2 benchmark shape is:
 batch: 20; n: 32; cond: 1; seed: 43214
 ```
 
-## 4. Open the Report
+## 4. Read the Details
 
 After the run finishes, the CLI downloads and extracts files like:
 
 ```text
 profile.0-batch-20-n-32-cond-1-seed-43214.zip
-profile.0-batch-20-n-32-cond-1-seed-43214/profile.ncu-rep
+profile.0-batch-20-n-32-cond-1-seed-43214/ncu-details.txt
+profile.0-batch-20-n-32-cond-1-seed-43214/ncu-details.csv
+profile.0-batch-20-n-32-cond-1-seed-43214/profile.ncu-rep   # optional GUI report
 ```
 
-The last line printed by the CLI opens the report on macOS:
+Use `ncu-details.txt` or `ncu-details.csv` as the default artifact for AI
+analysis. The CLI prints clickable links for these detail files.
+
+The last line printed by the CLI opens the optional GUI report on macOS:
 
 ```bash
 open -a "NVIDIA Nsight Compute" 'profile.0-batch-20-n-32-cond-1-seed-43214/profile.ncu-rep'
@@ -72,8 +78,8 @@ popcorn submit submission.py \
 ```
 
 This profiles every entry in the `benchmarks:` list in QR v2 `task.yml`, not
-the `tests:` list. It will produce one zip and one extracted `.ncu-rep` per
-benchmark shape.
+the `tests:` list. It will produce one zip plus extracted details and optional
+`.ncu-rep` files per benchmark shape.
 
 ## Normal Submit Commands
 
@@ -88,4 +94,3 @@ For leaderboard submission:
 ```bash
 popcorn submit submission.py --leaderboard qr_v2 --gpu B200 --mode leaderboard --no-tui
 ```
-

@@ -26,9 +26,9 @@ export POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v
 popcorn submit --leaderboard qr_v2 --profile-brev --benchmark-index 0 submission.py
 ```
 
-The CLI downloads a `.zip`, extracts `profile.ncu-rep`, and prints an
-`open -a "NVIDIA Nsight Compute" ...` command. See
-[profiling.md](profiling.md) for the complete QR v2 profiling flow.
+The CLI downloads a `.zip` and extracts `ncu-details.txt`, `ncu-details.csv`,
+and the optional `profile.ncu-rep` GUI report. See [profiling.md](profiling.md)
+for the complete QR v2 profiling flow.
 
 Submit to the leaderboard:
 
