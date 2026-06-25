@@ -1,108 +1,91 @@
-# Nsight Compute Profiling
+# QR v2 Nsight Compute Profiling
 
-Profile your kernels directly from the CLI and get detailed Nsight Compute metrics. This is particularly useful for the NVIDIA NVFP4 Blackwell competition where you need to optimize tensor core utilization.
+This profiles the GPU Mode QR v2 problem from `reference-kernels` and downloads
+an Nsight Compute `.ncu-rep` report that you can open locally.
 
-**Note:** Modal does not expose NCU. For Modal-ranked competitions, use the Brev-backed B200 profiler below.
-
-## Quick Start
-
-```bash
-popcorn-cli submit submission.py --leaderboard nvfp4_dual_gemm --gpu NVIDIA --mode profile --no-tui
-```
-
-For competitions whose ranked runs use Modal, use the Brev-backed B200 profiler:
+## 1. Install and Register
 
 ```bash
-POPCORN_BREV_PROFILER_URL=http://127.0.0.1:8765 popcorn-cli submission.py --profile-brev
+curl -fsSL https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/install.sh | bash
+popcorn register discord
 ```
 
-`--profile-brev` requires `POPCORN_BREV_PROFILER_URL` or `BREV_PROFILER_URL`.
-The endpoint should be a local/staging profiler or a hardened shared service.
-Do not expose a shared Brev profiler to untrusted users until submissions run
-in a per-job container or equivalent locked-down environment with no SSH keys,
-operator secrets, or other users' submissions mounted.
+Restart your terminal if `popcorn` is not found after installation.
 
-This uses the `#!POPCORN leaderboard ...` directive in `submission.py`. If the file does not include a leaderboard directive, pass one explicitly:
+## 2. Get the QR v2 Starter Submission
 
 ```bash
-POPCORN_BREV_PROFILER_URL=http://127.0.0.1:8765 popcorn-cli submit submission.py --leaderboard grayscale_v2 --profile-brev
+mkdir -p qr-v2-profile
+cd qr-v2-profile
+curl -O https://raw.githubusercontent.com/gpu-mode/reference-kernels/main/problems/linalg/qr_v2/submission.py
 ```
 
-For a quick single-shape QR profile:
+The profiler uses the hosted GPU Mode NCU service:
 
 ```bash
-POPCORN_BREV_PROFILER_URL=http://127.0.0.1:8765 popcorn-cli submit submission.py --leaderboard qr --profile-brev --benchmark-index 0
+export POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run
 ```
 
-## Expected Output
+## 3. Profile One QR v2 Shape
 
-The profiler returns three key metric tables for each benchmark:
+This profiles `benchmarks[0]` from
+`reference-kernels/problems/linalg/qr_v2/task.yml`:
 
-**GPU Throughput** - Overall utilization:
-```
-Metric Name      Metric Unit Metric Value
----------------- ----------- ------------
-Memory [%]                 %        32.48
-Compute (SM) [%]           %        13.23
-```
-
-**Pipe Utilization** - Which pipelines are active:
-```
-Metric Name          Metric Unit Metric Value
--------------------- ----------- ------------
-TC                             %        16.67
-TMEM (Tensor Memory)           %        15.27
-Tensor (FP)                    %        12.58
-ALU                            %         2.38
-TMA                            %         0.29
+```bash
+popcorn submit submission.py \
+  --leaderboard qr_v2 \
+  --profile-brev \
+  --benchmark-index 0 \
+  --no-tui
 ```
 
-**Warp State** - Where your warps are stalling:
-```
-Metric Name              Metric Unit Metric Value
------------------------- ----------- ------------
-Stall Long Scoreboard           inst        18.31
-Stall Wait                      inst         1.88
-Stall Short Scoreboard          inst         1.23
-Selected                        inst         1.00
-Stall Barrier                   inst         0.75
+The first QR v2 benchmark shape is:
+
+```text
+batch: 20; n: 32; cond: 1; seed: 43214
 ```
 
-## Trace Files
+## 4. Open the Report
 
-After profiling, a zip file is saved to your current directory and the `.ncu-rep`
-file is extracted next to it:
-```
+After the run finishes, the CLI downloads and extracts files like:
+
+```text
 profile.0-batch-20-n-32-cond-1-seed-43214.zip
 profile.0-batch-20-n-32-cond-1-seed-43214/profile.ncu-rep
 ```
 
-This contains a `.ncu-rep` file (the full Nsight Compute report):
-```
-$ unzip -l profile.0-batch-20-n-32-cond-1-seed-43214.zip
-  Length      Date    Time    Name
----------  ---------- -----   ----
-  2178383  01-13-2026 03:10   profile.ncu-rep
-```
+The last line printed by the CLI opens the report on macOS:
 
-The CLI prints a clickable terminal link to the extracted report and makes the
-last line a macOS command that opens it in Nsight Compute:
 ```bash
-open -a "NVIDIA Nsight Compute" profile.0-batch-20-n-32-cond-1-seed-43214/profile.ncu-rep
+open -a "NVIDIA Nsight Compute" 'profile.0-batch-20-n-32-cond-1-seed-43214/profile.ncu-rep'
 ```
 
-## Operator Notes
+## Profile All QR v2 Benchmark Shapes
 
-The CLI does not assume a Brev provider username or home directory. Configure
-the profiler service with explicit paths, or derive them from `$HOME` on the
-Brev machine, instead of hardcoding paths such as `/home/<user>`.
+Omit `--benchmark-index`:
 
-For SSH access, prefer a dedicated restricted SSH key for the profiler proxy.
-If you use the Brev CLI to maintain host metadata, run `brev refresh` once and
-then use normal `ssh`/`scp` against the refreshed host alias. Avoid putting
-`brev shell` or `brev copy` in per-job paths because they refresh each time.
+```bash
+popcorn submit submission.py \
+  --leaderboard qr_v2 \
+  --profile-brev \
+  --no-tui
+```
 
-The Brev worker should run each untrusted `submission.py` inside a container or
-similarly isolated runtime before a public profiler endpoint is enabled.
-Container isolation is not a complete sandbox, but it materially reduces the
-risk of submissions reading host secrets, SSH keys, or other submissions.
+This profiles every entry in the `benchmarks:` list in QR v2 `task.yml`, not
+the `tests:` list. It will produce one zip and one extracted `.ncu-rep` per
+benchmark shape.
+
+## Normal Submit Commands
+
+For correctness testing:
+
+```bash
+popcorn submit submission.py --leaderboard qr_v2 --gpu B200 --mode test --no-tui
+```
+
+For leaderboard submission:
+
+```bash
+popcorn submit submission.py --leaderboard qr_v2 --gpu B200 --mode leaderboard --no-tui
+```
+
