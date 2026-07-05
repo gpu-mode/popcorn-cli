@@ -168,8 +168,14 @@ pub async fn delete_submission(cli_id: String, submission_id: i64, force: bool) 
 fn truncate(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
+    } else if max_len <= 3 {
+        ".".repeat(max_len)
     } else {
-        format!("{}...", &s[..max_len - 3])
+        let mut end = max_len - 3;
+        while !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}...", &s[..end])
     }
 }
 
@@ -239,5 +245,19 @@ mod tests {
         assert_eq!(truncate("short", 19), "short");
         assert_eq!(truncate("submission.py", 19), "submission.py");
         assert_eq!(truncate("0123456789", 8), "01234...");
+    }
+
+    #[test]
+    fn test_truncate_handles_small_max_len() {
+        assert_eq!(truncate("0", 0), "");
+        assert_eq!(truncate("0123456789", 1), ".");
+        assert_eq!(truncate("0123456789", 2), "..");
+        assert_eq!(truncate("0123456789", 3), "...");
+    }
+
+    #[test]
+    fn test_truncate_handles_char_boundaries() {
+        assert_eq!(truncate("éclair", 4), "...");
+        assert_eq!(truncate("éclair", 5), "é...");
     }
 }
