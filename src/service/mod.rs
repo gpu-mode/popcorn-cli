@@ -1090,6 +1090,9 @@ async fn submit_solution_background<P: AsRef<Path>>(
         }
 
         if details.done {
+            if let Some(error) = leaderboard_completion_error(&details, submission_mode, gpu) {
+                return Err(anyhow!(error));
+            }
             return format_submission_details(&details);
         }
 
@@ -1133,6 +1136,86 @@ fn leaderboard_score_summary(details: &SubmissionDetails) -> Option<String> {
     }
 }
 
+fn same_gpu(run_gpu: &str, requested_gpu: &str) -> bool {
+    run_gpu.eq_ignore_ascii_case(requested_gpu)
+}
+
+fn has_qualifying_leaderboard_result(details: &SubmissionDetails, gpu: &str) -> bool {
+    let has_public_score = details.runs.iter().any(|run| {
+        run.mode == "leaderboard"
+            && !run.secret
+            && same_gpu(&run.runner, gpu)
+            && run.passed
+            && run.score.is_some()
+    });
+
+    let has_secret_leaderboard_pass = details.runs.iter().any(|run| {
+        run.mode == "leaderboard" && run.secret && same_gpu(&run.runner, gpu) && run.passed
+    });
+
+    let has_secret_failure = details
+        .runs
+        .iter()
+        .any(|run| run.secret && same_gpu(&run.runner, gpu) && !run.passed);
+
+    has_public_score && has_secret_leaderboard_pass && !has_secret_failure
+}
+
+fn leaderboard_completion_error(
+    details: &SubmissionDetails,
+    submission_mode: &str,
+    gpu: &str,
+) -> Option<String> {
+    if !submission_mode.eq_ignore_ascii_case("leaderboard") {
+        return None;
+    }
+
+    if has_qualifying_leaderboard_result(details, gpu) {
+        return None;
+    }
+
+    if let Some(error) = details
+        .job
+        .as_ref()
+        .and_then(|job| job.error.as_deref())
+        .filter(|error| !error.is_empty())
+    {
+        return Some(format!("Submission {}: {}", details.id, error));
+    }
+
+    let secret_failed = details
+        .runs
+        .iter()
+        .any(|run| run.secret && same_gpu(&run.runner, gpu) && !run.passed);
+
+    if secret_failed {
+        return Some(format!(
+            "Submission {} failed secret validation on {}; it will not appear on the leaderboard",
+            details.id, gpu
+        ));
+    }
+
+    let has_public_leaderboard_score = details.runs.iter().any(|run| {
+        run.mode == "leaderboard"
+            && !run.secret
+            && same_gpu(&run.runner, gpu)
+            && run.passed
+            && run.score.is_some()
+    });
+
+    if has_public_leaderboard_score {
+        Some(format!(
+            "Submission {} did not pass secret leaderboard validation on {}; it will not appear on the leaderboard",
+            details.id, gpu
+        ))
+    } else {
+        Some(format!(
+            "Submission {} completed without a leaderboard score on {}; it will not appear on the leaderboard",
+            details.id, gpu
+        ))
+    }
+}
+
 fn format_submission_details(details: &SubmissionDetails) -> Result<String> {
     let runs: Vec<Value> = details
         .runs
@@ -1150,11 +1233,19 @@ fn format_submission_details(details: &SubmissionDetails) -> Result<String> {
         })
         .collect();
 
+    let job = details.job.as_ref().map(|job| {
+        serde_json::json!({
+            "status": job.status,
+            "error": job.error,
+        })
+    });
+
     let json = serde_json::to_string_pretty(&serde_json::json!({
         "submission_id": details.id,
         "leaderboard": details.leaderboard_name,
         "file_name": details.file_name,
         "done": details.done,
+        "job": job,
         "runs": runs,
     }))
     .map_err(|e| anyhow!("Failed to format submission result: {}", e))?;
@@ -1697,6 +1788,12 @@ mod tests {
         }
     }
 
+    fn failed_run(mode: &str, secret: bool, score: Option<f64>) -> SubmissionRun {
+        let mut r = run(mode, secret, score);
+        r.passed = false;
+        r
+    }
+
     fn details(runs: Vec<SubmissionRun>) -> SubmissionDetails {
         SubmissionDetails {
             id: 1,
@@ -1761,5 +1858,58 @@ mod tests {
         assert!(leaderboard_score_summary(&d).is_none());
         // format_submission_details still works, just without a summary header.
         assert!(format_submission_details(&d).unwrap().starts_with('{'));
+    }
+
+    #[test]
+    fn test_leaderboard_completion_error_none_for_qualified_submission() {
+        let d = details(vec![
+            run("leaderboard", false, Some(0.0066)),
+            run("leaderboard", true, Some(0.0018)),
+        ]);
+
+        assert!(leaderboard_completion_error(&d, "leaderboard", "B200").is_none());
+    }
+
+    #[test]
+    fn test_leaderboard_completion_error_for_secret_failure() {
+        let d = details(vec![
+            run("leaderboard", false, Some(0.0066)),
+            failed_run("benchmark", true, None),
+        ]);
+
+        let error = leaderboard_completion_error(&d, "leaderboard", "B200")
+            .expect("expected secret validation failure");
+
+        assert!(error.contains("failed secret validation"));
+        assert!(error.contains("will not appear on the leaderboard"));
+    }
+
+    #[test]
+    fn test_leaderboard_completion_error_for_missing_secret_leaderboard() {
+        let d = details(vec![run("leaderboard", false, Some(0.0066))]);
+
+        let error = leaderboard_completion_error(&d, "leaderboard", "B200")
+            .expect("expected missing secret validation failure");
+
+        assert!(error.contains("did not pass secret leaderboard validation"));
+        assert!(error.contains("will not appear on the leaderboard"));
+    }
+
+    #[test]
+    fn test_leaderboard_completion_error_for_missing_public_score() {
+        let d = details(vec![run("leaderboard", false, None)]);
+
+        let error = leaderboard_completion_error(&d, "leaderboard", "B200")
+            .expect("expected missing score failure");
+
+        assert!(error.contains("completed without a leaderboard score"));
+        assert!(error.contains("will not appear on the leaderboard"));
+    }
+
+    #[test]
+    fn test_leaderboard_completion_error_ignores_non_leaderboard_modes() {
+        let d = details(vec![run("test", false, None)]);
+
+        assert!(leaderboard_completion_error(&d, "test", "B200").is_none());
     }
 }

@@ -26,7 +26,7 @@ pub async fn list_submissions(
 
     // Print each submission
     for sub in submissions {
-        let status = if sub.done { "done" } else { "pending" };
+        let status = list_status(sub.done, sub.runs.is_empty());
 
         // Collect all GPU types and best score from runs
         let gpus: Vec<&str> = sub.runs.iter().map(|r| r.gpu_type.as_str()).collect();
@@ -77,8 +77,16 @@ pub async fn show_submission(cli_id: String, submission_id: i64, no_code: bool) 
     println!("Submitted:      {}", sub.submission_time);
     println!(
         "Status:         {}",
-        if sub.done { "done" } else { "pending" }
+        detail_status(sub.done, sub.job.as_ref())
     );
+    if let Some(error) = sub
+        .job
+        .as_ref()
+        .and_then(|job| job.error.as_deref())
+        .filter(|error| !error.is_empty())
+    {
+        println!("Job error:      {}", error);
+    }
 
     if !sub.runs.is_empty() {
         println!("\nRuns:");
@@ -173,6 +181,22 @@ fn format_score(score: Option<f64>) -> String {
         .unwrap_or_else(|| "-".to_string())
 }
 
+fn list_status(done: bool, has_no_ranked_runs: bool) -> &'static str {
+    if !done {
+        "pending"
+    } else if has_no_ranked_runs {
+        "not ranked"
+    } else {
+        "done"
+    }
+}
+
+fn detail_status(done: bool, job: Option<&crate::models::SubmissionJobStatus>) -> String {
+    job.and_then(|job| job.status.as_deref())
+        .unwrap_or(if done { "done" } else { "pending" })
+        .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -201,6 +225,13 @@ mod tests {
     #[test]
     fn test_format_score_none_is_dash() {
         assert_eq!(format_score(None), "-");
+    }
+
+    #[test]
+    fn test_list_status_marks_done_without_ranked_runs() {
+        assert_eq!(list_status(false, true), "pending");
+        assert_eq!(list_status(true, true), "not ranked");
+        assert_eq!(list_status(true, false), "done");
     }
 
     #[test]
