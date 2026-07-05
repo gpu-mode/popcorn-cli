@@ -45,6 +45,8 @@ powershell -ExecutionPolicy Bypass -Command "iwr -UseBasicParsing https://raw.gi
 ```
 
 After installation, restart your terminal (or run `source ~/.bashrc` / `source ~/.zshrc`).
+The release binary is named `popcorn-cli`; the one-line installers also add a
+`popcorn` alias, and the examples below use that shorter command.
 
 ### Option 2: Manual Installation
 
@@ -55,8 +57,10 @@ After installation, restart your terminal (or run `source ~/.bashrc` / `source ~
    - Linux aarch64: `popcorn-cli-linux-aarch64.tar.gz`
    - macOS Apple Silicon: `popcorn-cli-macos.tar.gz`
    - Windows x86_64: `popcorn-cli-windows.zip`
-4. Extract the archive, move `popcorn-cli` into a directory on your `PATH`,
-   and run `popcorn --version` to confirm the installed version.
+4. Extract the archive, move `popcorn-cli` (`popcorn-cli.exe` on Windows) into
+   a directory on your `PATH`, and run `popcorn-cli --version` to confirm the
+   installed version. The `popcorn` alias is created by the one-line installers;
+   manual installs can use `popcorn-cli` directly.
 
 Older versions are available from the same Releases page by selecting a previous
 tag.

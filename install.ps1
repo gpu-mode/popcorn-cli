@@ -18,6 +18,7 @@ $downloadUrl = "https://github.com/gpu-mode/popcorn-cli/releases/latest/download
 $tempDir = "$env:TEMP\popcorn-cli-install"
 $installDir = "$env:LOCALAPPDATA\popcorn-cli"
 $binaryPath = "$installDir\popcorn-cli.exe"
+$aliasPath = "$installDir\popcorn.cmd"
 
 # Create directories
 try {
@@ -54,6 +55,13 @@ try {
         $fullBinaryPath = Join-Path $tempDir $binarySource
         Copy-Item $fullBinaryPath $binaryPath -Force
         Write-Host "Binary extracted and copied" -ForegroundColor Green
+
+        $aliasContent = @(
+            "@echo off",
+            "`"%~dp0popcorn-cli.exe`" %*"
+        )
+        Set-Content -Path $aliasPath -Value $aliasContent -Encoding ASCII
+        Write-Host "Created alias: popcorn -> popcorn-cli.exe" -ForegroundColor Green
     } else {
         Write-Host "popcorn-cli.exe not found in archive" -ForegroundColor Red
         exit 1
@@ -104,8 +112,8 @@ Write-Host "Popcorn CLI installed and ready for hackathon!" -ForegroundColor Gre
 Write-Host ""
 Write-Host "Quick Start:" -ForegroundColor Cyan
 Write-Host "   1. Restart your terminal/PowerShell" -ForegroundColor White
-Write-Host "   2. Register with GitHub: popcorn-cli register github" -ForegroundColor White
-Write-Host "   3. Submit your solution: popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test <your-file>" -ForegroundColor White
+Write-Host "   2. Register with GitHub: popcorn register github" -ForegroundColor White
+Write-Host "   3. Submit your solution: popcorn submit --gpu MI300 --leaderboard amd-fp8-mm --mode test <your-file>" -ForegroundColor White
 Write-Host ""
 Write-Host "Hackathon mode features:" -ForegroundColor Cyan
 Write-Host "   - API URL pre-configured" -ForegroundColor White
@@ -113,7 +121,8 @@ Write-Host "   - GitHub authentication (no Discord setup needed)" -ForegroundCol
 Write-Host "   - All modes available: test, benchmark, leaderboard, profile" -ForegroundColor White
 Write-Host "   - Clean user identification" -ForegroundColor White
 Write-Host ""
-Write-Host "Need help? Run: popcorn-cli --help" -ForegroundColor White
-Write-Host "Example: popcorn-cli submit --gpu MI300 --leaderboard amd-fp8-mm --mode test example.py" -ForegroundColor White
+Write-Host "Need help? Run: popcorn --help" -ForegroundColor White
+Write-Host "Example: popcorn submit --gpu MI300 --leaderboard amd-fp8-mm --mode test example.py" -ForegroundColor White
+Write-Host "Canonical binary: popcorn-cli.exe; alias command: popcorn" -ForegroundColor Gray
 Write-Host ""
-Write-Host "Installation location: $installDir" -ForegroundColor Gray 
+Write-Host "Installation location: $installDir" -ForegroundColor Gray
