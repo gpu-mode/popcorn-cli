@@ -5,9 +5,9 @@ A command-line interface tool for submitting solutions to the [gpumode.com](http
 
 Tested on linux and mac but should just work on Windows as well.
 
-## New: QR v2 Nsight Compute Profiling
+## New: Nsight Compute Profiling
 
-Profile QR v2 submissions on the hosted GPU Mode B200 Nsight Compute service.
+Profile QR v2 and `eigh` submissions on the hosted GPU Mode B200 Nsight Compute service.
 See [docs/profiling.md](docs/profiling.md) for a complete copy-paste flow.
 
 Quick QR v2 example:
@@ -16,6 +16,14 @@ Quick QR v2 example:
 curl -O https://raw.githubusercontent.com/gpu-mode/reference-kernels/main/problems/linalg/qr_v2/submission.py
 export POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run
 popcorn submit submission.py --leaderboard qr_v2 --profile-brev --benchmark-index 0 --no-tui
+```
+
+Quick `eigh` dense row example:
+
+```bash
+curl -O https://raw.githubusercontent.com/gpu-mode/reference-kernels/main/problems/linalg/eigh_py/submission.py
+export POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run
+popcorn submit submission.py --leaderboard eigh --profile-brev --benchmark-index 3 --no-tui
 ```
 
 The CLI downloads and extracts `ncu-details.txt` and `ncu-details.csv` for
@@ -128,6 +136,9 @@ POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.r
 
 # Profile one QR v2 benchmark shape
 POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run popcorn submit --leaderboard qr_v2 --profile-brev --benchmark-index 0 solution.py
+
+# Profile one eigh benchmark shape
+POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run popcorn submit --leaderboard eigh --profile-brev --benchmark-index 3 solution.py
 
 # Plain output mode (no TUI, good for CI/scripts)
 popcorn submit --no-tui --leaderboard grayscale_v2 --gpu A100 --mode test solution.py
