@@ -515,6 +515,7 @@ pub async fn get_user_submission(client: &Client, submission_id: i64) -> Result<
                     runner: r["runner"].as_str().unwrap_or("").to_string(),
                     score: parse_score(&r["score"]),
                     passed: r["passed"].as_bool().unwrap_or(false),
+                    result: r.get("result").filter(|value| !value.is_null()).cloned(),
                 })
                 .collect()
         })
@@ -1093,7 +1094,7 @@ async fn submit_solution_background<P: AsRef<Path>>(
             if let Some(error) = leaderboard_completion_error(&details, submission_mode, gpu) {
                 return Err(anyhow!(error));
             }
-            return format_submission_details(&details);
+            return format_submission_result(&details, submission_mode);
         }
 
         if elapsed >= SUBMISSION_POLL_TIMEOUT_SECONDS {
@@ -1106,6 +1107,157 @@ async fn submit_solution_background<P: AsRef<Path>>(
 
         sleep(Duration::from_secs(SUBMISSION_POLL_INTERVAL_SECONDS)).await;
         elapsed += SUBMISSION_POLL_INTERVAL_SECONDS;
+    }
+}
+
+fn result_count(result: &Value, key: &str) -> Option<usize> {
+    result.get(key).and_then(|value| match value {
+        Value::Number(number) => number
+            .as_u64()
+            .and_then(|count| usize::try_from(count).ok()),
+        Value::String(text) => text.parse::<usize>().ok(),
+        _ => None,
+    })
+}
+
+fn result_text(result: &Value, key: &str) -> Option<String> {
+    result.get(key).and_then(|value| match value {
+        Value::String(text) => Some(text.clone()),
+        Value::Number(number) => Some(number.to_string()),
+        Value::Bool(value) => Some(value.to_string()),
+        _ => None,
+    })
+}
+
+fn format_time(nanoseconds: f64, error: Option<f64>) -> String {
+    let (scale, unit) = if nanoseconds > 2_000_000.0 {
+        (1_000_000.0, "ms")
+    } else if nanoseconds > 2_000.0 {
+        (1_000.0, "µs")
+    } else {
+        (1.0, "ns")
+    };
+    let value = nanoseconds / scale;
+    let error = error
+        .filter(|error| *error != 0.0)
+        .map(|error| error / scale);
+
+    match (value, error) {
+        (value, Some(error)) if value < 1.0 => format!("{} ± {} {}", value, error, unit),
+        (value, None) if value < 1.0 => format!("{} {}", value, unit),
+        (value, Some(error)) if value < 10.0 => {
+            format!("{:.2} ± {:.3} {}", value, error, unit)
+        }
+        (value, None) if value < 10.0 => format!("{:.2} {}", value, unit),
+        (value, Some(error)) if value < 100.0 => {
+            format!("{:.1} ± {:.2} {}", value, error, unit)
+        }
+        (value, None) if value < 100.0 => format!("{:.1} {}", value, unit),
+        (value, Some(error)) => format!("{:.0} ± {:.1} {}", value, error, unit),
+        (value, None) => format!("{:.0} {}", value, unit),
+    }
+}
+
+fn format_test_rows(result: &Value) -> Vec<String> {
+    let Some(count) = result_count(result, "test-count") else {
+        return Vec::new();
+    };
+
+    (0..count)
+        .filter_map(|index| {
+            let status = result_text(result, &format!("test.{}.status", index))?;
+            let spec = result_text(result, &format!("test.{}.spec", index))
+                .unwrap_or_else(|| "<unknown test>".to_string());
+            let mut row = match status.as_str() {
+                "pass" => format!("✅ {}", spec),
+                "fail" => format!("❌ {}", spec),
+                _ => format!("? {} ({})", spec, status),
+            };
+
+            let detail_key = if status == "pass" { "message" } else { "error" };
+            if let Some(detail) = result_text(result, &format!("test.{}.{}", index, detail_key)) {
+                if !detail.is_empty() {
+                    row.push_str("\n> ");
+                    row.push_str(&detail.replace("\\n", "\n"));
+                }
+            }
+            Some(row)
+        })
+        .collect()
+}
+
+fn format_benchmark_rows(result: &Value) -> Vec<String> {
+    let Some(count) = result_count(result, "benchmark-count") else {
+        return Vec::new();
+    };
+
+    (0..count)
+        .map(|index| {
+            let base = format!("benchmark.{}", index);
+            let status = result_text(result, &format!("{}.status", base)).unwrap_or_default();
+            let spec = result_text(result, &format!("{}.spec", base))
+                .unwrap_or_else(|| "<unknown benchmark>".to_string());
+
+            if status == "fail" {
+                let error = result_text(result, &format!("{}.error", base))
+                    .unwrap_or_else(|| "No error information available".to_string());
+                return format!("❌ {} failed testing:\n{}", spec, error);
+            }
+
+            let mut row = spec;
+            if let Some(mean) = result.get(format!("{}.mean", base)).and_then(parse_score) {
+                let error = result.get(format!("{}.err", base)).and_then(parse_score);
+                row.push_str(&format!("\n ⏱ {}", format_time(mean, error)));
+            }
+            let best = result.get(format!("{}.best", base)).and_then(parse_score);
+            let worst = result.get(format!("{}.worst", base)).and_then(parse_score);
+            if let (Some(best), Some(worst)) = (best, worst) {
+                row.push_str(&format!(
+                    "\n ⚡ {} 🐌 {}",
+                    format_time(best, None),
+                    format_time(worst, None)
+                ));
+            }
+            row
+        })
+        .collect()
+}
+
+fn format_submission_rows(details: &SubmissionDetails, submission_mode: &str) -> Option<String> {
+    let format_rows: fn(&Value) -> Vec<String> = if submission_mode.eq_ignore_ascii_case("test") {
+        format_test_rows
+    } else if submission_mode.eq_ignore_ascii_case("benchmark") {
+        format_benchmark_rows
+    } else {
+        return None;
+    };
+
+    let sections: Vec<String> = details
+        .runs
+        .iter()
+        .filter(|run| !run.secret && run.mode.eq_ignore_ascii_case(submission_mode))
+        .filter_map(|run| {
+            let rows = format_rows(run.result.as_ref()?);
+            if rows.is_empty() {
+                None
+            } else {
+                Some(rows.join("\n\n"))
+            }
+        })
+        .collect();
+
+    if sections.is_empty() {
+        None
+    } else {
+        Some(sections.join("\n\n"))
+    }
+}
+
+fn format_submission_result(details: &SubmissionDetails, submission_mode: &str) -> Result<String> {
+    let summary = format_submission_details(details)?;
+    match format_submission_rows(details, submission_mode) {
+        Some(rows) => Ok(format!("{}\n\n{}", rows, summary)),
+        None => Ok(summary),
     }
 }
 
@@ -1606,6 +1758,10 @@ mod tests {
     use super::*;
     use chrono::TimeZone;
     use tempfile::tempdir;
+    use tokio::io::AsyncReadExt;
+    use tokio::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::const_new(());
 
     #[test]
     fn test_create_client_without_cli_id() {
@@ -1640,6 +1796,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fetch_leaderboards_missing_env_var() {
+        let _env_guard = ENV_LOCK.lock().await;
         // Temporarily unset the env var if set
         let original = std::env::var("POPCORN_API_URL").ok();
         std::env::remove_var("POPCORN_API_URL");
@@ -1659,6 +1816,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fetch_gpus_missing_env_var() {
+        let _env_guard = ENV_LOCK.lock().await;
         let original = std::env::var("POPCORN_API_URL").ok();
         std::env::remove_var("POPCORN_API_URL");
 
@@ -1676,6 +1834,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_submit_solution_missing_env_var() {
+        let _env_guard = ENV_LOCK.lock().await;
         let original = std::env::var("POPCORN_API_URL").ok();
         std::env::remove_var("POPCORN_API_URL");
 
@@ -1697,6 +1856,224 @@ mod tests {
 
         if let Some(val) = original {
             std::env::set_var("POPCORN_API_URL", val);
+        }
+    }
+
+    async fn read_http_request(stream: &mut tokio::net::TcpStream) -> String {
+        let mut request = Vec::new();
+        let mut buffer = [0_u8; 4096];
+        let mut expected_len = None;
+
+        loop {
+            let bytes_read = stream.read(&mut buffer).await.unwrap();
+            if bytes_read == 0 {
+                break;
+            }
+            request.extend_from_slice(&buffer[..bytes_read]);
+
+            if expected_len.is_none() {
+                if let Some(header_end) = request.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let headers = String::from_utf8_lossy(&request[..header_end]);
+                    let content_length = headers
+                        .lines()
+                        .find_map(|line| {
+                            line.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(str::trim)
+                                .and_then(|value| value.parse::<usize>().ok())
+                        })
+                        .unwrap_or(0);
+                    expected_len = Some(header_end + 4 + content_length);
+                }
+            }
+
+            if expected_len.is_some_and(|len| request.len() >= len) {
+                break;
+            }
+        }
+
+        String::from_utf8(request).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_standard_submission_modes_use_background_results_except_profile() {
+        let _env_guard = ENV_LOCK.lock().await;
+        let original = std::env::var("POPCORN_API_URL").ok();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        std::env::set_var("POPCORN_API_URL", &base_url);
+
+        let server = tokio::spawn(async move {
+            let mut request_lines = Vec::new();
+            let mut pending_mode = None;
+            for _ in 0..7 {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let request = read_http_request(&mut stream).await;
+                let request_line = request.lines().next().unwrap().to_string();
+                request_lines.push(request_line.clone());
+
+                let (status, content_type, body) = if request_line.starts_with("POST /submission/")
+                {
+                    let path = request_line.split_whitespace().nth(1).unwrap();
+                    pending_mode = path.rsplit('/').next().map(str::to_string);
+                    (
+                        "202 Accepted",
+                        "application/json",
+                        serde_json::json!({
+                            "details": {"id": 42},
+                            "runner_queue": null,
+                            "status": "accepted",
+                        })
+                        .to_string(),
+                    )
+                } else if request_line.starts_with("GET /user/submissions/42") {
+                    let mode = pending_mode.take().unwrap();
+                    let runs = match mode.as_str() {
+                        "test" => serde_json::json!([{
+                            "start_time": null,
+                            "end_time": null,
+                            "mode": "test",
+                            "secret": false,
+                            "runner": "H100",
+                            "score": null,
+                            "passed": true,
+                            "result": {
+                                "test-count": 2,
+                                "test.0.status": "pass",
+                                "test.0.spec": "test-row-one",
+                                "test.1.status": "pass",
+                                "test.1.spec": "test-row-two",
+                            },
+                        }]),
+                        "benchmark" => serde_json::json!([{
+                            "start_time": null,
+                            "end_time": null,
+                            "mode": "benchmark",
+                            "secret": false,
+                            "runner": "H100",
+                            "score": null,
+                            "passed": true,
+                            "result": {
+                                "benchmark-count": "2",
+                                "benchmark.0.status": "pass",
+                                "benchmark.0.spec": "shape-one",
+                                "benchmark.0.mean": "1500",
+                                "benchmark.1.status": "pass",
+                                "benchmark.1.spec": "shape-two",
+                                "benchmark.1.mean": "2500",
+                            },
+                        }]),
+                        "leaderboard" => serde_json::json!([
+                            {
+                                "start_time": null,
+                                "end_time": null,
+                                "mode": "leaderboard",
+                                "secret": false,
+                                "runner": "H100",
+                                "score": 0.0066,
+                                "passed": true,
+                            },
+                            {
+                                "start_time": null,
+                                "end_time": null,
+                                "mode": "leaderboard",
+                                "secret": true,
+                                "runner": "H100",
+                                "score": null,
+                                "passed": true,
+                            },
+                        ]),
+                        _ => unreachable!(),
+                    };
+                    (
+                        "200 OK",
+                        "application/json",
+                        serde_json::json!({
+                            "id": 42,
+                            "leaderboard_id": 7,
+                            "leaderboard_name": "test-leaderboard",
+                            "file_name": "solution.py",
+                            "user_id": "user",
+                            "submission_time": "2026-07-06T12:00:00Z",
+                            "done": true,
+                            "code": "print('hello')",
+                            "runs": runs,
+                            "job": {"status": "succeeded", "error": null},
+                            "runner_queue": null,
+                        })
+                        .to_string(),
+                    )
+                } else {
+                    (
+                        "200 OK",
+                        "text/event-stream",
+                        concat!(
+                            "event: result\n",
+                            "data: {\"status\":\"success\",\"results\":[],",
+                            "\"reports\":[\"profile complete\"]}\n\n"
+                        )
+                        .to_string(),
+                    )
+                };
+                let response = format!(
+                    "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    status,
+                    content_type,
+                    body.len(),
+                    body
+                );
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+            request_lines
+        });
+
+        let client = create_client(None).unwrap();
+        let submit = |mode| {
+            submit_solution(
+                &client,
+                "solution.py",
+                b"print('hello')",
+                "test-leaderboard",
+                "H100",
+                mode,
+                None,
+            )
+        };
+
+        let test_result = submit("test").await.unwrap();
+        assert!(
+            test_result.find("test-row-one").unwrap() < test_result.find("test-row-two").unwrap()
+        );
+
+        let benchmark_result = submit("benchmark").await.unwrap();
+        assert!(
+            benchmark_result.find("shape-one").unwrap()
+                < benchmark_result.find("shape-two").unwrap()
+        );
+
+        let leaderboard_result = submit("leaderboard").await.unwrap();
+        assert!(leaderboard_result.contains("Geomean score (public) on H100: 0.0066 s"));
+
+        let profile_result = submit("profile").await.unwrap();
+        assert_eq!(profile_result, r#"["profile complete"]"#);
+
+        let request_lines = server.await.unwrap();
+        assert_eq!(
+            request_lines,
+            [
+                "POST /submission/test-leaderboard/H100/test HTTP/1.1",
+                "GET /user/submissions/42 HTTP/1.1",
+                "POST /submission/test-leaderboard/H100/benchmark HTTP/1.1",
+                "GET /user/submissions/42 HTTP/1.1",
+                "POST /submission/test-leaderboard/H100/leaderboard HTTP/1.1",
+                "GET /user/submissions/42 HTTP/1.1",
+                "POST /test-leaderboard/H100/profile HTTP/1.1",
+            ]
+        );
+
+        match original {
+            Some(val) => std::env::set_var("POPCORN_API_URL", val),
+            None => std::env::remove_var("POPCORN_API_URL"),
         }
     }
 
@@ -1785,13 +2162,14 @@ mod tests {
             runner: "B200".to_string(),
             score,
             passed: true,
+            result: None,
         }
     }
 
     fn failed_run(mode: &str, secret: bool, score: Option<f64>) -> SubmissionRun {
-        let mut r = run(mode, secret, score);
-        r.passed = false;
-        r
+        let mut run = run(mode, secret, score);
+        run.passed = false;
+        run
     }
 
     fn details(runs: Vec<SubmissionRun>) -> SubmissionDetails {
@@ -1811,6 +2189,84 @@ mod tests {
     }
 
     #[test]
+    fn test_format_test_rows_preserves_index_order_and_details() {
+        let result = serde_json::json!({
+            "test-count": "2",
+            "test.0.status": "pass",
+            "test.0.spec": "first test",
+            "test.0.message": "worked\\nas expected",
+            "test.1.status": "fail",
+            "test.1.spec": "second test",
+            "test.1.error": "mismatch",
+        });
+
+        let rows = format_test_rows(&result);
+
+        assert_eq!(rows.len(), 2);
+        assert!(rows[0].contains("✅ first test"));
+        assert!(rows[0].contains("worked\nas expected"));
+        assert!(rows[1].contains("❌ second test"));
+        assert!(rows[1].contains("mismatch"));
+    }
+
+    #[test]
+    fn test_format_benchmark_rows_preserves_index_order_and_timings() {
+        let result = serde_json::json!({
+            "benchmark-count": 2,
+            "benchmark.0.status": "pass",
+            "benchmark.0.spec": "first shape",
+            "benchmark.0.mean": "2500",
+            "benchmark.0.err": 100,
+            "benchmark.0.best": "2200",
+            "benchmark.0.worst": 2800,
+            "benchmark.1.status": "fail",
+            "benchmark.1.spec": "second shape",
+            "benchmark.1.error": "timeout",
+        });
+
+        let rows = format_benchmark_rows(&result);
+
+        assert_eq!(rows.len(), 2);
+        assert!(rows[0].contains("first shape"));
+        assert!(rows[0].contains("2.50 ± 0.100 µs"));
+        assert!(rows[0].contains("2.20 µs"));
+        assert!(rows[0].contains("2.80 µs"));
+        assert!(rows[1].contains("❌ second shape failed testing"));
+        assert!(rows[1].contains("timeout"));
+    }
+
+    #[test]
+    fn test_format_submission_rows_ignores_secret_results() {
+        let mut public = run("benchmark", false, None);
+        public.result = Some(serde_json::json!({
+            "benchmark-count": 1,
+            "benchmark.0.status": "pass",
+            "benchmark.0.spec": "public shape",
+        }));
+        let mut secret = run("benchmark", true, None);
+        secret.result = Some(serde_json::json!({
+            "benchmark-count": 1,
+            "benchmark.0.status": "pass",
+            "benchmark.0.spec": "SECRET_SENTINEL",
+        }));
+
+        let output = format_submission_rows(&details(vec![public, secret]), "benchmark").unwrap();
+
+        assert!(output.contains("public shape"));
+        assert!(!output.contains("SECRET_SENTINEL"));
+    }
+
+    #[test]
+    fn test_format_submission_result_falls_back_without_detailed_result() {
+        let output =
+            format_submission_result(&details(vec![run("benchmark", false, None)]), "benchmark")
+                .unwrap();
+
+        assert!(output.starts_with('{'));
+        assert!(output.contains("\"mode\": \"benchmark\""));
+    }
+
+    #[test]
     fn test_runner_queue_summary_reports_queued_jobs() {
         let queue = RunnerQueueStatus {
             runner: Some("Modal".to_string()),
@@ -1826,58 +2282,54 @@ mod tests {
 
     #[test]
     fn test_leaderboard_score_summary_reports_geomean_scores() {
-        // Only the scored `leaderboard` runs are reported; test/benchmark and
-        // null-score runs are skipped.
-        let d = details(vec![
+        let details = details(vec![
             run("test", false, None),
             run("benchmark", false, None),
             run("leaderboard", false, Some(0.0066)),
             run("leaderboard", true, Some(0.0018)),
         ]);
-        let summary = leaderboard_score_summary(&d).expect("expected a score summary");
+        let summary = leaderboard_score_summary(&details).expect("expected a score summary");
         assert_eq!(
             summary,
             "Geomean score (public) on B200: 0.0066 s\n\
              Geomean score (secret) on B200: 0.0018 s"
         );
 
-        // And it is prepended to the formatted submission details.
-        let formatted = format_submission_details(&d).unwrap();
+        let formatted = format_submission_details(&details).unwrap();
         assert!(formatted.starts_with("Geomean score (public) on B200: 0.0066 s"));
     }
 
     #[test]
     fn test_leaderboard_score_summary_none_without_scored_leaderboard_run() {
-        // A submission with no scored leaderboard run (e.g. test/benchmark
-        // mode, or scores not yet populated) yields no summary.
-        let d = details(vec![
+        let details = details(vec![
             run("test", false, None),
             run("benchmark", false, Some(0.5)),
             run("leaderboard", false, None),
         ]);
-        assert!(leaderboard_score_summary(&d).is_none());
-        // format_submission_details still works, just without a summary header.
-        assert!(format_submission_details(&d).unwrap().starts_with('{'));
+        assert!(leaderboard_score_summary(&details).is_none());
+        assert!(format_submission_details(&details)
+            .unwrap()
+            .starts_with('{'));
     }
 
     #[test]
     fn test_leaderboard_completion_error_none_for_qualified_submission() {
-        let d = details(vec![
+        let details = details(vec![
             run("leaderboard", false, Some(0.0066)),
             run("leaderboard", true, Some(0.0018)),
         ]);
 
-        assert!(leaderboard_completion_error(&d, "leaderboard", "B200").is_none());
+        assert!(leaderboard_completion_error(&details, "leaderboard", "B200").is_none());
     }
 
     #[test]
     fn test_leaderboard_completion_error_for_secret_failure() {
-        let d = details(vec![
+        let details = details(vec![
             run("leaderboard", false, Some(0.0066)),
             failed_run("benchmark", true, None),
         ]);
 
-        let error = leaderboard_completion_error(&d, "leaderboard", "B200")
+        let error = leaderboard_completion_error(&details, "leaderboard", "B200")
             .expect("expected secret validation failure");
 
         assert!(error.contains("failed secret validation"));
@@ -1886,9 +2338,9 @@ mod tests {
 
     #[test]
     fn test_leaderboard_completion_error_for_missing_secret_leaderboard() {
-        let d = details(vec![run("leaderboard", false, Some(0.0066))]);
+        let details = details(vec![run("leaderboard", false, Some(0.0066))]);
 
-        let error = leaderboard_completion_error(&d, "leaderboard", "B200")
+        let error = leaderboard_completion_error(&details, "leaderboard", "B200")
             .expect("expected missing secret validation failure");
 
         assert!(error.contains("did not pass secret leaderboard validation"));
@@ -1897,9 +2349,9 @@ mod tests {
 
     #[test]
     fn test_leaderboard_completion_error_for_missing_public_score() {
-        let d = details(vec![run("leaderboard", false, None)]);
+        let details = details(vec![run("leaderboard", false, None)]);
 
-        let error = leaderboard_completion_error(&d, "leaderboard", "B200")
+        let error = leaderboard_completion_error(&details, "leaderboard", "B200")
             .expect("expected missing score failure");
 
         assert!(error.contains("completed without a leaderboard score"));
@@ -1908,8 +2360,8 @@ mod tests {
 
     #[test]
     fn test_leaderboard_completion_error_ignores_non_leaderboard_modes() {
-        let d = details(vec![run("test", false, None)]);
+        let details = details(vec![run("test", false, None)]);
 
-        assert!(leaderboard_completion_error(&d, "test", "B200").is_none());
+        assert!(leaderboard_completion_error(&details, "test", "B200").is_none());
     }
 }
