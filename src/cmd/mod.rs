@@ -62,7 +62,8 @@ pub struct Cli {
     #[arg(long)]
     pub mode: Option<String>,
 
-    /// Profile on the GPU Mode Brev B200 and save the Nsight Compute trace locally
+    /// Profile on the hosted GPU Mode Brev B200 and save Nsight Compute artifacts locally.
+    /// Requires POPCORN_BREV_PROFILER_URL, or BREV_PROFILER_URL as a fallback.
     #[arg(long)]
     pub profile_brev: bool,
 
@@ -145,7 +146,8 @@ enum Commands {
         #[arg(long)]
         mode: Option<String>,
 
-        /// Profile on the GPU Mode Brev B200 and save the Nsight Compute trace locally
+        /// Profile on the hosted GPU Mode Brev B200 and save Nsight Compute artifacts locally.
+        /// Requires POPCORN_BREV_PROFILER_URL, or BREV_PROFILER_URL as a fallback.
         #[arg(long)]
         profile_brev: bool,
 
