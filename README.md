@@ -7,7 +7,7 @@ Tested on linux and mac but should just work on Windows as well.
 
 ## New: Nsight Compute Profiling
 
-Profile QR v2 and `eigh` submissions on the hosted GPU Mode B200 Nsight Compute service.
+Profile submissions on the hosted GPU Mode B200 Nsight Compute service.
 See [docs/profiling.md](docs/profiling.md) for a complete copy-paste flow.
 
 Quick QR v2 example:
@@ -24,6 +24,14 @@ Quick `eigh` dense row example:
 curl -O https://raw.githubusercontent.com/gpu-mode/reference-kernels/main/problems/linalg/eigh_py/submission.py
 export POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run
 popcorn submit submission.py --leaderboard eigh --profile-brev --benchmark-index 3 --no-tui
+```
+
+Quick `cholesky` dense row example:
+
+```bash
+curl -O https://raw.githubusercontent.com/gpu-mode/reference-kernels/main/problems/linalg/cholesky_py/submission.py
+export POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run
+popcorn submit submission.py --leaderboard cholesky --profile-brev --benchmark-index 0 --no-tui
 ```
 
 The CLI downloads and extracts `ncu-details.txt` and `ncu-details.csv` for
