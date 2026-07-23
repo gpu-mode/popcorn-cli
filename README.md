@@ -26,7 +26,7 @@ export POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v
 popcorn submit submission.py --leaderboard eigh --profile-brev --benchmark-index 3 --no-tui
 ```
 
-Quick `cholesky` dense row example:
+Quick `cholesky` example:
 
 ```bash
 curl -O https://raw.githubusercontent.com/gpu-mode/reference-kernels/main/problems/linalg/cholesky_py/submission.py
