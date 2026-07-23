@@ -95,7 +95,29 @@ Current `eigh` benchmark index table from `reference-kernels` main
 | 11 | `batch: 640; n: 512; cond: 0; seed: 780001; case: lapack_dense_even_spectrum` |
 | 12 | `batch: 60; n: 1024; cond: 0; seed: 780007; case: lapack_dense_geometric_spectrum` |
 
-## 5. Read the Details
+## 5. Profile Cholesky
+
+Get the `cholesky` starter submission:
+
+```bash
+mkdir -p cholesky-profile
+cd cholesky-profile
+curl -O https://raw.githubusercontent.com/gpu-mode/reference-kernels/main/problems/linalg/cholesky_py/submission.py
+```
+
+Profile the `batch=4096, n=32` benchmark:
+
+```bash
+popcorn submit submission.py \
+  --leaderboard cholesky \
+  --profile-brev \
+  --benchmark-index 0 \
+  --no-tui
+```
+
+The profiler will only profile the first 10 kernels, so if your solution uses more than that (the default Pytorch implementation does), then the profiler might be of limited use.
+
+## 6. Read the Details
 
 After the run finishes, the CLI downloads and extracts files like:
 
