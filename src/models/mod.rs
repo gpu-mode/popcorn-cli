@@ -108,4 +108,5 @@ pub struct SubmissionRun {
     pub score: Option<f64>,
     pub passed: bool,
     pub result: Option<serde_json::Value>,
+    pub diagnostics: Option<serde_json::Value>,
 }

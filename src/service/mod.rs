@@ -516,6 +516,10 @@ pub async fn get_user_submission(client: &Client, submission_id: i64) -> Result<
                     score: parse_score(&r["score"]),
                     passed: r["passed"].as_bool().unwrap_or(false),
                     result: r.get("result").filter(|value| !value.is_null()).cloned(),
+                    diagnostics: r
+                        .get("diagnostics")
+                        .filter(|value| !value.is_null())
+                        .cloned(),
                 })
                 .collect()
         })
@@ -1080,11 +1084,14 @@ async fn submit_solution_background<P: AsRef<Path>>(
                     .as_ref()
                     .and_then(|job| job.error.as_deref())
                     .unwrap_or("No error details were provided");
+                let diagnostics = format_submission_diagnostics(&details, submission_mode);
+                let suffix = diagnostics.map_or_else(String::new, |text| format!("\n\n{}", text));
                 return Err(anyhow!(
-                    "Submission {} {}: {}",
+                    "Submission {} {}: {}{}",
                     submission_id,
                     job_status,
-                    error
+                    error,
+                    suffix
                 ));
             }
             _ => {}
@@ -1092,6 +1099,9 @@ async fn submit_solution_background<P: AsRef<Path>>(
 
         if details.done {
             if let Some(error) = leaderboard_completion_error(&details, submission_mode, gpu) {
+                return Err(anyhow!(error));
+            }
+            if let Some(error) = public_run_completion_error(&details, submission_mode)? {
                 return Err(anyhow!(error));
             }
             return format_submission_result(&details, submission_mode);
@@ -1223,6 +1233,82 @@ fn format_benchmark_rows(result: &Value) -> Vec<String> {
         .collect()
 }
 
+fn diagnostic_text<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+}
+
+fn format_run_diagnostics(run: &SubmissionRun) -> Option<String> {
+    let diagnostics = run.diagnostics.as_ref()?;
+    let mut sections = Vec::new();
+
+    if let Some(compilation) = diagnostics.get("compilation") {
+        let compilation_failed = compilation.get("success").and_then(Value::as_bool) == Some(false);
+        if compilation_failed {
+            if let Some(stderr) = diagnostic_text(compilation, "stderr") {
+                sections.push(format!("Compiler stderr:\n{}", stderr.replace("\\n", "\n")));
+            } else if let Some(stdout) = diagnostic_text(compilation, "stdout") {
+                sections.push(format!("Compiler stdout:\n{}", stdout.replace("\\n", "\n")));
+            }
+        }
+    }
+
+    let exit_code = diagnostics.get("exit_code").and_then(Value::as_i64);
+    if let Some(stderr) = diagnostic_text(diagnostics, "stderr") {
+        let label = exit_code.map_or_else(
+            || "Runtime stderr".to_string(),
+            |code| format!("Runtime stderr (exit code {})", code),
+        );
+        sections.push(format!("{}:\n{}", label, stderr.replace("\\n", "\n")));
+    } else if let Some(stdout) = diagnostic_text(diagnostics, "stdout") {
+        let label = exit_code.map_or_else(
+            || "Runtime stdout".to_string(),
+            |code| format!("Runtime stdout (exit code {})", code),
+        );
+        sections.push(format!("{}:\n{}", label, stdout.replace("\\n", "\n")));
+    } else if let Some(code) = exit_code.filter(|code| *code != 0) {
+        sections.push(format!("Runtime exited with code {}.", code));
+    }
+
+    if sections.is_empty() {
+        None
+    } else {
+        Some(sections.join("\n\n"))
+    }
+}
+
+pub(crate) fn format_run_failure_details(run: &SubmissionRun) -> Option<String> {
+    if run.secret || run.passed {
+        return None;
+    }
+
+    let rows = run.result.as_ref().and_then(|result| {
+        let rows = if run.mode.eq_ignore_ascii_case("test") {
+            format_test_rows(result)
+        } else if run.mode.eq_ignore_ascii_case("benchmark") {
+            format_benchmark_rows(result)
+        } else {
+            Vec::new()
+        };
+        if rows.is_empty() {
+            None
+        } else {
+            Some(rows.join("\n\n"))
+        }
+    });
+    let diagnostics = format_run_diagnostics(run);
+
+    match (rows, diagnostics) {
+        (Some(rows), Some(diagnostics)) => Some(format!("{}\n\n{}", rows, diagnostics)),
+        (Some(rows), None) => Some(rows),
+        (None, Some(diagnostics)) => Some(diagnostics),
+        (None, None) => None,
+    }
+}
+
 fn format_submission_rows(details: &SubmissionDetails, submission_mode: &str) -> Option<String> {
     let format_rows: fn(&Value) -> Vec<String> = if submission_mode.eq_ignore_ascii_case("test") {
         format_test_rows
@@ -1253,12 +1339,70 @@ fn format_submission_rows(details: &SubmissionDetails, submission_mode: &str) ->
     }
 }
 
+fn format_submission_diagnostics(
+    details: &SubmissionDetails,
+    submission_mode: &str,
+) -> Option<String> {
+    let sections: Vec<String> = details
+        .runs
+        .iter()
+        .filter(|run| !run.secret && !run.passed)
+        .filter(|run| {
+            submission_mode.eq_ignore_ascii_case("leaderboard")
+                || run.mode.eq_ignore_ascii_case(submission_mode)
+        })
+        .filter_map(|run| {
+            format_run_diagnostics(run).map(|diagnostics| {
+                format!(
+                    "Failure diagnostics ({} on {}):\n{}",
+                    run.mode, run.runner, diagnostics
+                )
+            })
+        })
+        .collect();
+
+    if sections.is_empty() {
+        None
+    } else {
+        Some(sections.join("\n\n"))
+    }
+}
+
 fn format_submission_result(details: &SubmissionDetails, submission_mode: &str) -> Result<String> {
     let summary = format_submission_details(details)?;
-    match format_submission_rows(details, submission_mode) {
-        Some(rows) => Ok(format!("{}\n\n{}", rows, summary)),
-        None => Ok(summary),
+    let rows = format_submission_rows(details, submission_mode);
+    let diagnostics = format_submission_diagnostics(details, submission_mode);
+    match (rows, diagnostics) {
+        (Some(rows), Some(diagnostics)) => {
+            Ok(format!("{}\n\n{}\n\n{}", rows, diagnostics, summary))
+        }
+        (Some(rows), None) => Ok(format!("{}\n\n{}", rows, summary)),
+        (None, Some(diagnostics)) => Ok(format!("{}\n\n{}", diagnostics, summary)),
+        (None, None) => Ok(summary),
     }
+}
+
+fn public_run_completion_error(
+    details: &SubmissionDetails,
+    submission_mode: &str,
+) -> Result<Option<String>> {
+    if submission_mode.eq_ignore_ascii_case("leaderboard") {
+        return Ok(None);
+    }
+
+    let requested_run_failed = details
+        .runs
+        .iter()
+        .any(|run| !run.secret && run.mode.eq_ignore_ascii_case(submission_mode) && !run.passed);
+    if !requested_run_failed {
+        return Ok(None);
+    }
+
+    let report = format_submission_result(details, submission_mode)?;
+    Ok(Some(format!(
+        "Submission {} {} failed\n\n{}",
+        details.id, submission_mode, report
+    )))
 }
 
 /// Build a human-readable summary of the geomean leaderboard score(s) for a
@@ -2163,6 +2307,7 @@ mod tests {
             score,
             passed: true,
             result: None,
+            diagnostics: None,
         }
     }
 
@@ -2264,6 +2409,87 @@ mod tests {
 
         assert!(output.starts_with('{'));
         assert!(output.contains("\"mode\": \"benchmark\""));
+    }
+
+    #[test]
+    fn test_format_submission_result_surfaces_runtime_traceback() {
+        let mut runtime_failure = failed_run("benchmark", false, None);
+        runtime_failure.diagnostics = Some(serde_json::json!({
+            "stdout": "",
+            "stderr": "Traceback (most recent call last):\n  File \"submission.py\", line 7\nRuntimeError: boom",
+            "success": false,
+            "exit_code": 1,
+            "duration": 0.25,
+        }));
+
+        let output =
+            format_submission_result(&details(vec![runtime_failure]), "benchmark").unwrap();
+
+        assert!(output.contains("Failure diagnostics (benchmark on B200)"));
+        assert!(output.contains("Runtime stderr (exit code 1)"));
+        assert!(output.contains("RuntimeError: boom"));
+    }
+
+    #[test]
+    fn test_format_submission_result_redacts_secret_diagnostics() {
+        let mut secret_failure = failed_run("benchmark", true, None);
+        secret_failure.diagnostics = Some(serde_json::json!({
+            "stderr": "SECRET_TRACEBACK_SENTINEL",
+            "exit_code": 1,
+        }));
+
+        let output =
+            format_submission_result(&details(vec![secret_failure]), "leaderboard").unwrap();
+
+        assert!(!output.contains("SECRET_TRACEBACK_SENTINEL"));
+    }
+
+    #[test]
+    fn test_format_run_failure_details_surfaces_compiler_error() {
+        let mut compile_failure = failed_run("test", false, None);
+        compile_failure.diagnostics = Some(serde_json::json!({
+            "compilation": {
+                "success": false,
+                "stderr": "kernel.cu(12): error: identifier is undefined",
+            },
+            "stderr": "",
+            "exit_code": 1,
+        }));
+
+        let output = format_run_failure_details(&compile_failure).unwrap();
+
+        assert!(output.contains("Compiler stderr"));
+        assert!(output.contains("identifier is undefined"));
+    }
+
+    #[test]
+    fn test_public_run_completion_error_makes_benchmark_failure_actionable() {
+        let mut runtime_failure = failed_run("benchmark", false, None);
+        runtime_failure.diagnostics = Some(serde_json::json!({
+            "stderr": "RuntimeError: benchmark exploded",
+            "exit_code": 1,
+        }));
+        let details = details(vec![runtime_failure]);
+
+        let error = public_run_completion_error(&details, "benchmark")
+            .unwrap()
+            .expect("expected a failed benchmark");
+
+        assert!(error.contains("Submission 1 benchmark failed"));
+        assert!(error.contains("RuntimeError: benchmark exploded"));
+    }
+
+    #[test]
+    fn test_public_run_completion_error_ignores_success_and_secret_runs() {
+        let success = details(vec![run("benchmark", false, None)]);
+        assert!(public_run_completion_error(&success, "benchmark")
+            .unwrap()
+            .is_none());
+
+        let secret_failure = details(vec![failed_run("benchmark", true, None)]);
+        assert!(public_run_completion_error(&secret_failure, "leaderboard")
+            .unwrap()
+            .is_none());
     }
 
     #[test]
