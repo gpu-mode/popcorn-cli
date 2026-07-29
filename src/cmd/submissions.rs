@@ -103,6 +103,12 @@ pub async fn show_submission(cli_id: String, submission_id: i64, no_code: bool) 
                 "  - {} on {}: {} (score: {}){}{}",
                 run.mode, run.runner, status, score_str, secret_marker, time_info
             );
+            if let Some(details) = service::format_run_failure_details(run) {
+                println!("    Failure details:");
+                for line in details.lines() {
+                    println!("      {}", line);
+                }
+            }
         }
     }
 
