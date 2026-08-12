@@ -1185,12 +1185,11 @@ fn format_test_rows(result: &Value) -> Vec<String> {
             };
 
             let detail_key = if status == "pass" { "message" } else { "error" };
-            if let Some(detail) = result_text(result, &format!("test.{}.{}", index, detail_key)) {
-                if !detail.is_empty() {
+            if let Some(detail) = result_text(result, &format!("test.{}.{}", index, detail_key))
+                && !detail.is_empty() {
                     row.push_str("\n> ");
                     row.push_str(&detail.replace("\\n", "\n"));
                 }
-            }
             Some(row)
         })
         .collect()
@@ -1679,27 +1678,23 @@ async fn submit_solution_streaming<P: AsRef<Path>>(
                                             {
                                                 if let Some(stdout) =
                                                     run_obj.get("stdout").and_then(|s| s.as_str())
-                                                {
-                                                    if !stdout.is_empty() {
+                                                    && !stdout.is_empty() {
                                                         cb(format!(
                                                             "STDOUT (Run {}):\n{}",
                                                             i + 1,
                                                             stdout
                                                         ));
                                                     }
-                                                }
                                                 // Also check stderr
                                                 if let Some(stderr) =
                                                     run_obj.get("stderr").and_then(|s| s.as_str())
-                                                {
-                                                    if !stderr.is_empty() {
+                                                    && !stderr.is_empty() {
                                                         cb(format!(
                                                             "STDERR (Run {}):\n{}",
                                                             i + 1,
                                                             stderr
                                                         ));
                                                     }
-                                                }
                                             }
                                         }
                                     }
@@ -1707,11 +1702,9 @@ async fn submit_solution_streaming<P: AsRef<Path>>(
                                     // Fallback for single object or different structure
                                     if let Some(stdout) =
                                         result_val.get("stdout").and_then(|s| s.as_str())
-                                    {
-                                        if !stdout.is_empty() {
+                                        && !stdout.is_empty() {
                                             cb(format!("STDOUT:\n{}", stdout));
                                         }
-                                    }
                                 }
                             }
 
@@ -1785,16 +1778,14 @@ fn handle_profile_result(
         // 2. Decode and display profile report from run.result
         if let Some(run) = run_data.get("run") {
             // Display stdout/stderr if present
-            if let Some(stdout) = run.get("stdout").and_then(|s| s.as_str()) {
-                if !stdout.is_empty() {
+            if let Some(stdout) = run.get("stdout").and_then(|s| s.as_str())
+                && !stdout.is_empty() {
                     cb(format!("STDOUT:\n{}", stdout));
                 }
-            }
-            if let Some(stderr) = run.get("stderr").and_then(|s| s.as_str()) {
-                if !stderr.is_empty() {
+            if let Some(stderr) = run.get("stderr").and_then(|s| s.as_str())
+                && !stderr.is_empty() {
                     cb(format!("STDERR:\n{}", stderr));
                 }
-            }
 
             // Extract and decode profile report from result
             if let Some(result) = run.get("result").and_then(|r| r.as_object()) {
@@ -1829,8 +1820,8 @@ fn handle_profile_result(
         }
 
         // 3. Save trace file with unique timestamp
-        if let Some(trace_b64) = profile.get("trace").and_then(|t| t.as_str()) {
-            if !trace_b64.is_empty() {
+        if let Some(trace_b64) = profile.get("trace").and_then(|t| t.as_str())
+            && !trace_b64.is_empty() {
                 match base64::engine::general_purpose::STANDARD.decode(trace_b64) {
                     Ok(trace_data) => {
                         match write_profile_trace_file(&trace_data, Utc::now(), result_idx, run_key)
@@ -1842,14 +1833,12 @@ fn handle_profile_result(
                     Err(e) => cb(format!("Failed to decode trace data: {}", e)),
                 }
             }
-        }
 
         // 4. Show download URL if available
-        if let Some(url) = profile.get("download_url").and_then(|u| u.as_str()) {
-            if !url.is_empty() {
+        if let Some(url) = profile.get("download_url").and_then(|u| u.as_str())
+            && !url.is_empty() {
                 cb(format!("Download full profile: {}", url));
             }
-        }
     }
 }
 
@@ -1943,7 +1932,7 @@ mod tests {
         let _env_guard = ENV_LOCK.lock().await;
         // Temporarily unset the env var if set
         let original = std::env::var("POPCORN_API_URL").ok();
-        std::env::remove_var("POPCORN_API_URL");
+        unsafe { std::env::remove_var("POPCORN_API_URL"); }
 
         let client = create_client(None).unwrap();
         let result = fetch_leaderboards(&client).await;
@@ -1954,7 +1943,7 @@ mod tests {
 
         // Restore original value if it existed
         if let Some(val) = original {
-            std::env::set_var("POPCORN_API_URL", val);
+            unsafe { std::env::set_var("POPCORN_API_URL", val); }
         }
     }
 
@@ -1962,7 +1951,7 @@ mod tests {
     async fn test_fetch_gpus_missing_env_var() {
         let _env_guard = ENV_LOCK.lock().await;
         let original = std::env::var("POPCORN_API_URL").ok();
-        std::env::remove_var("POPCORN_API_URL");
+        unsafe { std::env::remove_var("POPCORN_API_URL"); }
 
         let client = create_client(None).unwrap();
         let result = fetch_gpus(&client, "test-leaderboard").await;
@@ -1972,7 +1961,7 @@ mod tests {
         assert!(err_msg.contains("POPCORN_API_URL"));
 
         if let Some(val) = original {
-            std::env::set_var("POPCORN_API_URL", val);
+            unsafe { std::env::set_var("POPCORN_API_URL", val); }
         }
     }
 
@@ -1980,7 +1969,7 @@ mod tests {
     async fn test_submit_solution_missing_env_var() {
         let _env_guard = ENV_LOCK.lock().await;
         let original = std::env::var("POPCORN_API_URL").ok();
-        std::env::remove_var("POPCORN_API_URL");
+        unsafe { std::env::remove_var("POPCORN_API_URL"); }
 
         let client = create_client(None).unwrap();
         let result = submit_solution(
@@ -1999,7 +1988,7 @@ mod tests {
         assert!(err_msg.contains("POPCORN_API_URL"));
 
         if let Some(val) = original {
-            std::env::set_var("POPCORN_API_URL", val);
+            unsafe { std::env::set_var("POPCORN_API_URL", val); }
         }
     }
 
@@ -2015,8 +2004,8 @@ mod tests {
             }
             request.extend_from_slice(&buffer[..bytes_read]);
 
-            if expected_len.is_none() {
-                if let Some(header_end) = request.windows(4).position(|w| w == b"\r\n\r\n") {
+            if expected_len.is_none()
+                && let Some(header_end) = request.windows(4).position(|w| w == b"\r\n\r\n") {
                     let headers = String::from_utf8_lossy(&request[..header_end]);
                     let content_length = headers
                         .lines()
@@ -2029,7 +2018,6 @@ mod tests {
                         .unwrap_or(0);
                     expected_len = Some(header_end + 4 + content_length);
                 }
-            }
 
             if expected_len.is_some_and(|len| request.len() >= len) {
                 break;
@@ -2045,7 +2033,7 @@ mod tests {
         let original = std::env::var("POPCORN_API_URL").ok();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base_url = format!("http://{}", listener.local_addr().unwrap());
-        std::env::set_var("POPCORN_API_URL", &base_url);
+        unsafe { std::env::set_var("POPCORN_API_URL", &base_url); }
 
         let server = tokio::spawn(async move {
             let mut request_lines = Vec::new();
@@ -2216,8 +2204,8 @@ mod tests {
         );
 
         match original {
-            Some(val) => std::env::set_var("POPCORN_API_URL", val),
-            None => std::env::remove_var("POPCORN_API_URL"),
+            Some(val) => unsafe { std::env::set_var("POPCORN_API_URL", val) },
+            None => unsafe { std::env::remove_var("POPCORN_API_URL") },
         }
     }
 

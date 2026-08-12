@@ -74,8 +74,8 @@ impl ResultPage {
 
     pub fn handle_key_event(&mut self, state: &mut ResultPageState) {
         // Use a non-blocking poll
-        if let Ok(true) = event::poll(std::time::Duration::from_millis(0)) {
-            if let Ok(Event::Key(key)) = event::read() {
+        if let Ok(true) = event::poll(std::time::Duration::from_millis(0))
+            && let Ok(Event::Key(key)) = event::read() {
                 if key.kind != KeyEventKind::Press {
                     return;
                 }
@@ -114,7 +114,6 @@ impl ResultPage {
                     _ => {}
                 }
             }
-        }
     }
 }
 
@@ -140,7 +139,7 @@ impl StatefulWidget for &ResultPage {
                 .symbols(scrollbar::HORIZONTAL);
 
         vertical_scrollbar.render(
-            right.inner(&Margin {
+            right.inner(Margin {
                 vertical: 1,
                 horizontal: 0,
             }),
@@ -148,7 +147,7 @@ impl StatefulWidget for &ResultPage {
             &mut state.vertical_scroll_state,
         );
         horizontal_scrollbar.render(
-            right.inner(&Margin {
+            right.inner(Margin {
                 vertical: 0,
                 horizontal: 1,
             }),
