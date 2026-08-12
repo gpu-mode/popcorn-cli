@@ -239,24 +239,22 @@ pub async fn handle_admin(action: AdminAction) -> Result<()> {
             .await?;
 
             // Pretty print the results
-            if let Some(created) = result.get("created").and_then(|v| v.as_array()) {
-                if !created.is_empty() {
+            if let Some(created) = result.get("created").and_then(|v| v.as_array())
+                && !created.is_empty() {
                     println!("\nCreated {} leaderboard(s):", created.len());
                     for name in created {
                         println!("  + {}", name.as_str().unwrap_or("unknown"));
                     }
                 }
-            }
-            if let Some(updated) = result.get("updated").and_then(|v| v.as_array()) {
-                if !updated.is_empty() {
+            if let Some(updated) = result.get("updated").and_then(|v| v.as_array())
+                && !updated.is_empty() {
                     println!("\nUpdated {} leaderboard(s):", updated.len());
                     for name in updated {
                         println!("  ~ {}", name.as_str().unwrap_or("unknown"));
                     }
                 }
-            }
-            if let Some(skipped) = result.get("skipped").and_then(|v| v.as_array()) {
-                if !skipped.is_empty() {
+            if let Some(skipped) = result.get("skipped").and_then(|v| v.as_array())
+                && !skipped.is_empty() {
                     println!("\nSkipped {} leaderboard(s):", skipped.len());
                     for item in skipped {
                         let name = item
@@ -270,9 +268,8 @@ pub async fn handle_admin(action: AdminAction) -> Result<()> {
                         println!("  - {} ({})", name, reason);
                     }
                 }
-            }
-            if let Some(errors) = result.get("errors").and_then(|v| v.as_array()) {
-                if !errors.is_empty() {
+            if let Some(errors) = result.get("errors").and_then(|v| v.as_array())
+                && !errors.is_empty() {
                     println!("\nErrors ({}):", errors.len());
                     for item in errors {
                         let name = item
@@ -286,7 +283,6 @@ pub async fn handle_admin(action: AdminAction) -> Result<()> {
                         println!("  ! {}: {}", name, error);
                     }
                 }
-            }
         }
     }
 

@@ -13,10 +13,13 @@ use std::process;
 async fn main() {
     // Set the API URL FIRST - before anything else
     if env::var("POPCORN_API_URL").is_err() {
-        env::set_var(
-            "POPCORN_API_URL",
-            "https://site--bot--dxfjds728w5v.code.run",
-        );
+        // SAFETY: single-threaded startup before any other threads or env reads.
+        unsafe {
+            env::set_var(
+                "POPCORN_API_URL",
+                "https://site--bot--dxfjds728w5v.code.run",
+            );
+        }
     }
     // Parse command line arguments
     let cli = Cli::parse();

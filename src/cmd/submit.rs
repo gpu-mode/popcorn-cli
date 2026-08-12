@@ -6,7 +6,7 @@ use anyhow::{anyhow, Result};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen};
 use ratatui::prelude::*;
-use ratatui::style::{Color, Style, Stylize};
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
 use serde_json::Value;
@@ -141,8 +141,8 @@ impl App {
             }
             KeyCode::Enter => match self.app_state {
                 AppState::LeaderboardSelection => {
-                    if let Some(idx) = self.leaderboards_state.selected() {
-                        if idx < self.leaderboards.len() {
+                    if let Some(idx) = self.leaderboards_state.selected()
+                        && idx < self.leaderboards.len() {
                             self.selected_leaderboard =
                                 Some(self.leaderboards[idx].title_text.clone());
 
@@ -159,20 +159,18 @@ impl App {
                             }
                             return Ok(true);
                         }
-                    }
                 }
                 AppState::GpuSelection => {
-                    if let Some(idx) = self.gpus_state.selected() {
-                        if idx < self.gpus.len() {
+                    if let Some(idx) = self.gpus_state.selected()
+                        && idx < self.gpus.len() {
                             self.selected_gpu = Some(self.gpus[idx].title_text.clone());
                             self.app_state = AppState::SubmissionModeSelection;
                             return Ok(true);
                         }
-                    }
                 }
                 AppState::SubmissionModeSelection => {
-                    if let Some(idx) = self.submission_modes_state.selected() {
-                        if idx < self.submission_modes.len() {
+                    if let Some(idx) = self.submission_modes_state.selected()
+                        && idx < self.submission_modes.len() {
                             self.selected_submission_mode =
                                 Some(self.submission_modes[idx].value.clone());
                             self.app_state = AppState::WaitingForResult;
@@ -184,7 +182,6 @@ impl App {
                             }
                             return Ok(true);
                         }
-                    }
                 }
                 _ => {}
             },
@@ -209,25 +206,22 @@ impl App {
     fn move_selection_up(&mut self) {
         match self.app_state {
             AppState::LeaderboardSelection => {
-                if let Some(idx) = self.leaderboards_state.selected() {
-                    if idx > 0 {
+                if let Some(idx) = self.leaderboards_state.selected()
+                    && idx > 0 {
                         self.leaderboards_state.select(Some(idx - 1));
                     }
-                }
             }
             AppState::GpuSelection => {
-                if let Some(idx) = self.gpus_state.selected() {
-                    if idx > 0 {
+                if let Some(idx) = self.gpus_state.selected()
+                    && idx > 0 {
                         self.gpus_state.select(Some(idx - 1));
                     }
-                }
             }
             AppState::SubmissionModeSelection => {
-                if let Some(idx) = self.submission_modes_state.selected() {
-                    if idx > 0 {
+                if let Some(idx) = self.submission_modes_state.selected()
+                    && idx > 0 {
                         self.submission_modes_state.select(Some(idx - 1));
                     }
-                }
             }
             _ => {}
         }
@@ -236,25 +230,22 @@ impl App {
     fn move_selection_down(&mut self) {
         match self.app_state {
             AppState::LeaderboardSelection => {
-                if let Some(idx) = self.leaderboards_state.selected() {
-                    if idx < self.leaderboards.len().saturating_sub(1) {
+                if let Some(idx) = self.leaderboards_state.selected()
+                    && idx < self.leaderboards.len().saturating_sub(1) {
                         self.leaderboards_state.select(Some(idx + 1));
                     }
-                }
             }
             AppState::GpuSelection => {
-                if let Some(idx) = self.gpus_state.selected() {
-                    if idx < self.gpus.len().saturating_sub(1) {
+                if let Some(idx) = self.gpus_state.selected()
+                    && idx < self.gpus.len().saturating_sub(1) {
                         self.gpus_state.select(Some(idx + 1));
                     }
-                }
             }
             AppState::SubmissionModeSelection => {
-                if let Some(idx) = self.submission_modes_state.selected() {
-                    if idx < self.submission_modes.len().saturating_sub(1) {
+                if let Some(idx) = self.submission_modes_state.selected()
+                    && idx < self.submission_modes.len().saturating_sub(1) {
                         self.submission_modes_state.select(Some(idx + 1));
                     }
-                }
             }
             _ => {}
         }
@@ -317,8 +308,8 @@ impl App {
     }
 
     pub async fn check_leaderboard_task(&mut self) {
-        if let Some(handle) = &mut self.leaderboards_task {
-            if handle.is_finished() {
+        if let Some(handle) = &mut self.leaderboards_task
+            && handle.is_finished() {
                 let task = self.leaderboards_task.take().unwrap();
                 match task.await {
                     Ok(Ok(leaderboards)) => {
@@ -356,12 +347,11 @@ impl App {
                     Err(e) => self.set_error_and_quit(format!("Task join error: {}", e)),
                 }
             }
-        }
     }
 
     pub async fn check_gpu_task(&mut self) {
-        if let Some(handle) = &mut self.gpus_task {
-            if handle.is_finished() {
+        if let Some(handle) = &mut self.gpus_task
+            && handle.is_finished() {
                 let task = self.gpus_task.take().unwrap();
                 match task.await {
                     Ok(Ok(gpus)) => {
@@ -387,12 +377,11 @@ impl App {
                     Err(e) => self.set_error_and_quit(format!("Task join error: {}", e)),
                 }
             }
-        }
     }
 
     pub async fn check_submission_task(&mut self) {
-        if let Some(handle) = &mut self.submission_task {
-            if handle.is_finished() {
+        if let Some(handle) = &mut self.submission_task
+            && handle.is_finished() {
                 let task = self.submission_task.take().unwrap();
                 match task.await {
                     Ok(Ok(status)) => {
@@ -403,7 +392,6 @@ impl App {
                     Err(e) => self.set_error_and_quit(format!("Task join error: {}", e)),
                 }
             }
-        }
     }
 }
 
@@ -411,7 +399,7 @@ pub fn ui(app: &App, frame: &mut Frame) {
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(0)].as_ref())
-        .split(frame.size());
+        .split(frame.area());
 
     let list_area = main_layout[0];
     let available_width = list_area.width.saturating_sub(4) as usize;
@@ -615,13 +603,11 @@ pub async fn run_submit_tui(
 
         app.update_loading_page_state(terminal.size()?.width);
 
-        if event::poll(std::time::Duration::from_millis(50))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
+        if event::poll(std::time::Duration::from_millis(50))?
+            && let Event::Key(key) = event::read()?
+                && key.kind == KeyEventKind::Press {
                     app.handle_key_event(key)?;
                 }
-            }
-        }
     }
 
     let mut result_text = "Submission cancelled.".to_string();
@@ -660,7 +646,7 @@ pub async fn run_submit_tui(
         if now.duration_since(last_draw) >= std::time::Duration::from_millis(100) {
             terminal
                 .draw(|frame: &mut Frame| {
-                    frame.render_stateful_widget(&result_page, frame.size(), state);
+                    frame.render_stateful_widget(&result_page, frame.area(), state);
                 })
                 .unwrap();
             last_draw = now;
