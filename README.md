@@ -151,9 +151,50 @@ POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.r
 # Plain output mode (no TUI, good for CI/scripts)
 popcorn submit --no-tui --leaderboard grayscale_v2 --gpu A100 --mode test solution.py
 
+# Run the public leaderboard pipeline in your own Modal account
+MODAL_TOKEN_ID=... MODAL_TOKEN_SECRET=... popcorn submit --local --leaderboard eigh --gpu B200 --mode leaderboard solution.py
+
 # Save results to a file
 popcorn submit --output results.json --leaderboard grayscale_v2 --gpu A100 --mode benchmark solution.py
 ```
+
+#### Local Modal mode
+
+`--local` runs the public `reference-kernels` task with KernelBot's evaluator
+on a GPU billed to your Modal account. It bypasses Popcorn registration and the
+GPU Mode API, and implies plain (non-TUI) output. The supported Modal GPU names
+are `T4`, `L4`, `L4x4`, `A100`, `H100`, and `B200`; AMD runners are not available
+through Modal.
+
+Install and authenticate Modal first:
+
+```bash
+python3 -m pip install modal
+
+# Either save the token in Modal's local config...
+modal token set
+
+# ...or supply it without changing local config.
+export MODAL_TOKEN_ID=your-token-id
+export MODAL_TOKEN_SECRET=your-token-secret
+```
+
+Then use the normal submission modes:
+
+```bash
+popcorn submit --local --leaderboard eigh --gpu B200 --mode test submission.py
+popcorn submit --local --leaderboard eigh --gpu B200 --mode benchmark submission.py
+popcorn submit --local --leaderboard eigh --gpu B200 --mode leaderboard submission.py
+```
+
+Local `leaderboard` mode runs the same public test, benchmark, and ranked
+evaluation stages and computes the task's ranking score. It does not run GPU
+Mode's private seed, update gpumode.com, or create an official submission. The
+output records the exact `reference-kernels` and KernelBot commits used. Set
+`POPCORN_REFERENCE_KERNELS_REF` or `POPCORN_KERNELBOT_REF` to a branch, tag, or
+commit when you need to pin or test another public revision. By default, the
+runner resolves both `main` branches to immutable commit SHAs on every command;
+if either lookup fails, it stops instead of risking a stale cached image.
 
 **Submission modes:**
 - `test` - Quick test run to check correctness

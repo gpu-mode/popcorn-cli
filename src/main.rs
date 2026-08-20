@@ -1,4 +1,5 @@
 mod cmd;
+mod local;
 mod models;
 mod service;
 mod utils;

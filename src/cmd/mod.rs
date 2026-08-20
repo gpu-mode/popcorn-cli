@@ -67,6 +67,11 @@ pub struct Cli {
     #[arg(long)]
     pub profile_brev: bool,
 
+    /// Run the public evaluation in your own Modal account instead of submitting to GPU Mode.
+    /// Uses Modal's configured profile or MODAL_TOKEN_ID/MODAL_TOKEN_SECRET.
+    #[arg(long, conflicts_with = "profile_brev")]
+    pub local: bool,
+
     /// Optional: Profile a single benchmark index when using --profile-brev
     #[arg(long)]
     pub benchmark_index: Option<usize>,
@@ -151,6 +156,11 @@ enum Commands {
         #[arg(long)]
         profile_brev: bool,
 
+        /// Run the public evaluation in your own Modal account instead of submitting to GPU Mode.
+        /// Uses Modal's configured profile or MODAL_TOKEN_ID/MODAL_TOKEN_SECRET.
+        #[arg(long, conflicts_with = "profile_brev")]
+        local: bool,
+
         /// Optional: Profile a single benchmark index when using --profile-brev
         #[arg(long)]
         benchmark_index: Option<usize>,
@@ -203,53 +213,60 @@ pub async fn execute(cli: Cli) -> Result<()> {
             leaderboard,
             mode,
             profile_brev,
+            local,
             benchmark_index,
             output,
             no_tui,
         }) => {
-            let config = load_config()?;
-            let cli_id = config.cli_id.ok_or_else(|| {
-                anyhow!(
-                    "cli_id not found in config file ({}). Please run 'popcorn-cli register' first.",
-                    get_config_path()
-                        .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
-                )
-            })?;
-
             // Use filepath from Submit command first, fallback to top-level filepath
             let final_filepath = filepath.or(cli.filepath);
             let final_gpu = if profile_brev {
                 Some("B200_Brev".to_string())
             } else {
-                gpu
+                gpu.clone()
             };
             let final_mode = if profile_brev {
                 Some("profile".to_string())
             } else {
-                mode
+                mode.clone()
             };
 
-            if no_tui || profile_brev {
-                submit::run_submit_plain(
-                    final_filepath, // Resolved filepath
-                    final_gpu,      // From Submit command
-                    leaderboard,    // From Submit command
-                    final_mode,     // From Submit command
-                    cli_id,
-                    benchmark_index.or(cli.benchmark_index),
-                    output, // From Submit command
-                )
-                .await
+            if local {
+                submit::run_submit_local(final_filepath, gpu, leaderboard, mode, output).await
             } else {
-                submit::run_submit_tui(
-                    final_filepath, // Resolved filepath
-                    final_gpu,      // From Submit command
-                    leaderboard,    // From Submit command
-                    final_mode,     // From Submit command
-                    cli_id,
-                    output, // From Submit command
-                )
-                .await
+                let config = load_config()?;
+                let cli_id = config.cli_id.ok_or_else(|| {
+                    anyhow!(
+                        "cli_id not found in config file ({}). Please run 'popcorn-cli register' first.",
+                        get_config_path().map_or_else(
+                            |_| "unknown path".to_string(),
+                            |p| p.display().to_string()
+                        )
+                    )
+                })?;
+
+                if no_tui || profile_brev {
+                    submit::run_submit_plain(
+                        final_filepath, // Resolved filepath
+                        final_gpu,      // From Submit command
+                        leaderboard,    // From Submit command
+                        final_mode,     // From Submit command
+                        cli_id,
+                        benchmark_index.or(cli.benchmark_index),
+                        output, // From Submit command
+                    )
+                    .await
+                } else {
+                    submit::run_submit_tui(
+                        final_filepath, // Resolved filepath
+                        final_gpu,      // From Submit command
+                        leaderboard,    // From Submit command
+                        final_mode,     // From Submit command
+                        cli_id,
+                        output, // From Submit command
+                    )
+                    .await
+                }
             }
         }
         Some(Commands::Join { code }) => {
@@ -301,6 +318,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         None => {
             // Check if any of the submission-related flags were used at the top level
             if !cli.profile_brev
+                && !cli.local
                 && (cli.gpu.is_some() || cli.leaderboard.is_some() || cli.mode.is_some())
             {
                 return Err(anyhow!(
@@ -311,37 +329,50 @@ pub async fn execute(cli: Cli) -> Result<()> {
 
             // Handle the case where only a filepath is provided (for backward compatibility)
             if let Some(top_level_filepath) = cli.filepath {
-                let config = load_config()?;
-                let cli_id = config.cli_id.ok_or_else(|| {
-                    anyhow!(
-                        "cli_id not found in config file ({}). Please run `popcorn register` first.",
-                        get_config_path()
-                            .map_or_else(|_| "unknown path".to_string(), |p| p.display().to_string())
-                    )
-                })?;
-
-                if cli.profile_brev {
-                    submit::run_submit_plain(
+                if cli.local {
+                    submit::run_submit_local(
                         Some(top_level_filepath),
-                        Some("B200_Brev".to_string()),
+                        cli.gpu,
                         cli.leaderboard,
-                        Some("profile".to_string()),
-                        cli_id,
-                        cli.benchmark_index,
+                        cli.mode,
                         cli.output,
                     )
                     .await
                 } else {
-                    // Run TUI with only filepath, no other options
-                    submit::run_submit_tui(
-                        Some(top_level_filepath),
-                        None, // No GPU option
-                        None, // No leaderboard option
-                        None, // No mode option
-                        cli_id,
-                        None, // No output option
-                    )
-                    .await
+                    let config = load_config()?;
+                    let cli_id = config.cli_id.ok_or_else(|| {
+                        anyhow!(
+                            "cli_id not found in config file ({}). Please run `popcorn register` first.",
+                            get_config_path().map_or_else(
+                                |_| "unknown path".to_string(),
+                                |p| p.display().to_string()
+                            )
+                        )
+                    })?;
+
+                    if cli.profile_brev {
+                        submit::run_submit_plain(
+                            Some(top_level_filepath),
+                            Some("B200_Brev".to_string()),
+                            cli.leaderboard,
+                            Some("profile".to_string()),
+                            cli_id,
+                            cli.benchmark_index,
+                            cli.output,
+                        )
+                        .await
+                    } else {
+                        // Run TUI with only filepath, no other options
+                        submit::run_submit_tui(
+                            Some(top_level_filepath),
+                            None, // No GPU option
+                            None, // No leaderboard option
+                            None, // No mode option
+                            cli_id,
+                            None, // No output option
+                        )
+                        .await
+                    }
                 }
             } else {
                 Err(anyhow!(
