@@ -1168,7 +1168,7 @@ fn format_time(nanoseconds: f64, error: Option<f64>) -> String {
     }
 }
 
-fn format_test_rows(result: &Value) -> Vec<String> {
+pub(crate) fn format_test_rows(result: &Value) -> Vec<String> {
     let Some(count) = result_count(result, "test-count") else {
         return Vec::new();
     };
@@ -1196,7 +1196,7 @@ fn format_test_rows(result: &Value) -> Vec<String> {
         .collect()
 }
 
-fn format_benchmark_rows(result: &Value) -> Vec<String> {
+pub(crate) fn format_benchmark_rows(result: &Value) -> Vec<String> {
     let Some(count) = result_count(result, "benchmark-count") else {
         return Vec::new();
     };

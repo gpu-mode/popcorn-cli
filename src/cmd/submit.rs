@@ -808,6 +808,74 @@ pub async fn run_submit_plain(
     Ok(())
 }
 
+pub async fn run_submit_local(
+    filepath: Option<String>,
+    gpu: Option<String>,
+    leaderboard: Option<String>,
+    mode: Option<String>,
+    output: Option<String>,
+) -> Result<()> {
+    let file_to_submit = filepath.ok_or_else(|| anyhow!("File path is required with --local"))?;
+    let submission_path = Path::new(&file_to_submit);
+    if !submission_path.exists() {
+        return Err(anyhow!("File not found: {}", file_to_submit));
+    }
+    if utils::is_archive_file(submission_path) {
+        return Err(anyhow!(
+            "Local Modal mode currently supports single source files, not archives"
+        ));
+    }
+
+    let (directives, has_multiple_gpus) = utils::get_popcorn_directives(submission_path)?;
+    if has_multiple_gpus {
+        return Err(anyhow!(
+            "Multiple GPUs are not supported yet. Please specify only one GPU."
+        ));
+    }
+
+    let final_gpu = gpu
+        .or_else(|| directives.gpus.first().cloned())
+        .ok_or_else(|| anyhow!("GPU not specified. Use --gpu or add a GPU directive"))?;
+    let final_leaderboard = leaderboard
+        .or_else(|| {
+            (!directives.leaderboard_name.is_empty()).then_some(directives.leaderboard_name.clone())
+        })
+        .ok_or_else(|| {
+            anyhow!("Leaderboard not specified. Use --leaderboard or add a leaderboard directive")
+        })?;
+    let final_mode = mode.ok_or_else(|| {
+        anyhow!("Submission mode not specified. Use --mode test, benchmark, or leaderboard")
+    })?;
+
+    eprintln!("Running public evaluation in your Modal account");
+    eprintln!("Leaderboard: {}", final_leaderboard);
+    eprintln!("GPU: {}", final_gpu);
+    eprintln!("Mode: {}", final_mode);
+    eprintln!("File: {}", file_to_submit);
+    eprintln!("\nWaiting for Modal results...");
+
+    let result = crate::local::run_modal_submission(
+        submission_path,
+        &final_leaderboard,
+        &final_gpu,
+        &final_mode,
+    )
+    .await?;
+
+    if let Some(output_path) = output {
+        if let Some(parent) = Path::new(&output_path).parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| anyhow!("Failed to create directories for {}: {}", output_path, e))?;
+        }
+        std::fs::write(&output_path, &result)
+            .map_err(|e| anyhow!("Failed to write result to file {}: {}", output_path, e))?;
+        eprintln!("\nResults written to: {}", output_path);
+    }
+
+    println!("\n{}", result);
+    Ok(())
+}
+
 #[derive(Debug)]
 struct ProfileReportLink {
     file_url: String,
