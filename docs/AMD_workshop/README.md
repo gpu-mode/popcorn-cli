@@ -16,7 +16,7 @@ powershell -ExecutionPolicy Bypass -Command "iwr -UseBasicParsing https://raw.gi
 
 ## 📋 Quick Start After Installation
 
-1. **Restart your terminal** (or run `source ~/.bashrc` / `source ~/.zshrc`)
+1. **Restart your terminal** (or run `source ~/.bashrc` / `source ~/.zshrc` / `source ~/.config/fish/config.fish`)
 
 2. **Register with GitHub** (one-time setup):
    ```bash

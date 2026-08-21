@@ -60,7 +60,7 @@ curl -fsSL https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/install.s
 powershell -ExecutionPolicy Bypass -Command "iwr -UseBasicParsing https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/install.ps1 | iex"
 ```
 
-After installation, restart your terminal (or run `source ~/.bashrc` / `source ~/.zshrc`).
+After installation, restart your terminal (or run `source ~/.bashrc` / `source ~/.zshrc` / `source ~/.config/fish/config.fish`).
 The release binary is named `popcorn-cli`; the one-line installers also add a
 `popcorn` alias, and the examples below use that shorter command.
 
@@ -90,8 +90,9 @@ tag.
 
 **Command not found after installation:**
 - Restart your terminal
-- Check if the install directory is in your PATH:
-  - Linux/macOS: `echo $PATH`
+- Check if `~/.local/bin` is in your PATH (`echo $PATH`)
+  - fish: `fish_add_path ~/.local/bin` (the installer writes this to `~/.config/fish/config.fish`)
+  - bash/zsh: `export PATH="$HOME/.local/bin:$PATH"`
   - Windows: `echo $env:PATH`
 - Check if POPCORN_API_URL is set to https://site--bot--dxfjds728w5v.code.run
   - Linux/macOS: `echo $POPCORN_API_URL`
