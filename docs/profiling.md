@@ -18,7 +18,7 @@ Check the actual evaluator selected by the task, since task-specific copies may
 have different support. AMD and multi-GPU NCU profiling are unsupported.
 
 Problem authors can follow the reference-kernels
-[NCU integration guide](https://github.com/gpu-mode/reference-kernels/blob/docs/ncu-problem-guide/docs/ncu-profiling.md).
+[NCU integration guide](https://github.com/gpu-mode/reference-kernels/blob/bcfa2447fe77ca90456d46f41ff73d38bce6060a/docs/ncu-profiling.md).
 
 ## 1. Install Popcorn and Modal
 
