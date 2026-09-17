@@ -7,39 +7,38 @@ Tested on linux and mac but should just work on Windows as well.
 
 ## New: Nsight Compute Profiling
 
-Profile submissions on the hosted GPU Mode B200 Nsight Compute service.
+Profile submissions on Modal (B200 by default).
+Install and authenticate the Modal CLI first (`pip install modal && modal setup`).
+`--profile` and `--mode profile` run in your Modal account, bypassing Popcorn
+registration. Use `--profile-brev` to explicitly select the hosted Brev service.
 See [docs/profiling.md](docs/profiling.md) for a complete copy-paste flow.
 
 Quick QR v2 example:
 
 ```bash
 curl -O https://raw.githubusercontent.com/gpu-mode/reference-kernels/main/problems/linalg/qr_v2/submission.py
-export POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run
-popcorn submit submission.py --leaderboard qr_v2 --profile-brev --benchmark-index 0 --no-tui
+popcorn submit submission.py --leaderboard qr_v2 --profile --benchmark-index 0 --no-tui
 ```
 
 Quick `eigh` dense row example:
 
 ```bash
 curl -O https://raw.githubusercontent.com/gpu-mode/reference-kernels/main/problems/linalg/eigh_py/submission.py
-export POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run
-popcorn submit submission.py --leaderboard eigh --profile-brev --benchmark-index 3 --no-tui
+popcorn submit submission.py --leaderboard eigh --profile --benchmark-index 3 --no-tui
 ```
 
 Quick `cholesky` example:
 
 ```bash
 curl -O https://raw.githubusercontent.com/gpu-mode/reference-kernels/main/problems/linalg/cholesky_py/submission.py
-export POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run
-popcorn submit submission.py --leaderboard cholesky --profile-brev --benchmark-index 0 --no-tui
+popcorn submit submission.py --leaderboard cholesky --profile --benchmark-index 0 --no-tui
 ```
 
 The CLI downloads and extracts `ncu-details.txt` and `ncu-details.csv` for
-agent-readable analysis. It also extracts the optional `.ncu-rep` GUI report and
-ends with a macOS command that opens it in Nsight Compute:
+agent-readable analysis. It also extracts the optional `.ncu-rep` GUI report which you can open in Nsight Compute:
 
 ```bash
-open -a "NVIDIA Nsight Compute" profile.0-.../profile.ncu-rep
+open -a "NVIDIA Nsight Compute" popcorn-profile-<run>/profile-0/profile.ncu-rep
 ```
 
 ## [NEW] Submit To The Linear Algebra Competition
@@ -139,14 +138,14 @@ popcorn submit solution.py
 # Direct submission with all options
 popcorn submit --leaderboard grayscale_v2 --gpu A100 --mode leaderboard solution.py
 
-# Nsight Compute profile on the hosted GPU Mode B200 profiler
-POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run popcorn submit --leaderboard qr_v2 --profile-brev solution.py
+# Nsight Compute profile on Modal, using your account (B200 by default)
+popcorn submit --leaderboard qr_v2 --profile solution.py
 
 # Profile one QR v2 benchmark shape
-POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run popcorn submit --leaderboard qr_v2 --profile-brev --benchmark-index 0 solution.py
+popcorn submit --leaderboard qr_v2 --profile --benchmark-index 0 solution.py
 
 # Profile one eigh benchmark shape
-POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run popcorn submit --leaderboard eigh --profile-brev --benchmark-index 3 solution.py
+popcorn submit --leaderboard eigh --profile --benchmark-index 3 solution.py
 
 # Plain output mode (no TUI, good for CI/scripts)
 popcorn submit --no-tui --leaderboard grayscale_v2 --gpu A100 --mode test solution.py
@@ -200,7 +199,7 @@ if either lookup fails, it stops instead of risking a stale cached image.
 - `test` - Quick test run to check correctness
 - `benchmark` - Benchmark your solution (no leaderboard impact)
 - `leaderboard` - Official ranked submission
-- `profile` - Profile with Nsight Compute (limited availability)
+- `profile` - Profile with Nsight Compute in your Modal account (default GPU: B200)
 
 ### Submissions
 

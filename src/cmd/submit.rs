@@ -687,7 +687,7 @@ pub async fn run_submit_plain(
     leaderboard: Option<String>,
     mode: Option<String>,
     cli_id: String,
-    benchmark_index: Option<usize>,
+    profile_options: crate::local::ProfileOptions,
     output: Option<String>,
 ) -> Result<()> {
     let file_to_submit = match filepath {
@@ -757,7 +757,7 @@ pub async fn run_submit_plain(
             &file_to_submit,
             &file_content,
             &final_leaderboard,
-            benchmark_index,
+            &profile_options,
             Some(Box::new(|msg| {
                 eprintln!("{}", msg);
             })),
@@ -813,9 +813,11 @@ pub async fn run_submit_local(
     gpu: Option<String>,
     leaderboard: Option<String>,
     mode: Option<String>,
+    profile_options: crate::local::ProfileOptions,
     output: Option<String>,
 ) -> Result<()> {
-    let file_to_submit = filepath.ok_or_else(|| anyhow!("File path is required with --local"))?;
+    let file_to_submit =
+        filepath.ok_or_else(|| anyhow!("File path is required with --local or --profile"))?;
     let submission_path = Path::new(&file_to_submit);
     if !submission_path.exists() {
         return Err(anyhow!("File not found: {}", file_to_submit));
@@ -833,8 +835,18 @@ pub async fn run_submit_local(
         ));
     }
 
+    let final_mode = mode.ok_or_else(|| {
+        anyhow!(
+            "Submission mode not specified. Use --mode test, benchmark, leaderboard, or profile"
+        )
+    })?;
     let final_gpu = gpu
         .or_else(|| directives.gpus.first().cloned())
+        .or_else(|| {
+            final_mode
+                .eq_ignore_ascii_case("profile")
+                .then(|| "B200".to_string())
+        })
         .ok_or_else(|| anyhow!("GPU not specified. Use --gpu or add a GPU directive"))?;
     let final_leaderboard = leaderboard
         .or_else(|| {
@@ -843,9 +855,6 @@ pub async fn run_submit_local(
         .ok_or_else(|| {
             anyhow!("Leaderboard not specified. Use --leaderboard or add a leaderboard directive")
         })?;
-    let final_mode = mode.ok_or_else(|| {
-        anyhow!("Submission mode not specified. Use --mode test, benchmark, or leaderboard")
-    })?;
 
     eprintln!("Running public evaluation in your Modal account");
     eprintln!("Leaderboard: {}", final_leaderboard);
@@ -859,6 +868,7 @@ pub async fn run_submit_local(
         &final_leaderboard,
         &final_gpu,
         &final_mode,
+        &profile_options,
     )
     .await?;
 

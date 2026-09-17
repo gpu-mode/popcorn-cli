@@ -651,7 +651,7 @@ pub async fn profile_brev_solution<P: AsRef<Path>>(
     filepath: P,
     file_content: &[u8],
     leaderboard: &str,
-    benchmark_index: Option<usize>,
+    options: &crate::local::ProfileOptions,
     on_log: Option<Box<dyn Fn(String) + Send + Sync>>,
 ) -> Result<String> {
     let base_url = env::var("POPCORN_BREV_PROFILER_URL")
@@ -663,6 +663,51 @@ pub async fn profile_brev_solution<P: AsRef<Path>>(
         })?;
     let base_url = base_url.trim_end_matches('/');
 
+    let requested_capture_options: Vec<&str> = [
+        ("ncu_kernel_name", options.ncu_kernel_name.is_some()),
+        (
+            "ncu_kernel_name_base",
+            options.ncu_kernel_name_base.is_some(),
+        ),
+        ("ncu_launch_count", options.ncu_launch_count.is_some()),
+    ]
+    .into_iter()
+    .filter_map(|(name, requested)| requested.then_some(name))
+    .collect();
+    if !requested_capture_options.is_empty() {
+        let health_resp = client
+            .get(format!("{}/health", base_url))
+            .timeout(Duration::from_secs(30))
+            .send()
+            .await?;
+        let health_status = health_resp.status();
+        if !health_status.is_success() {
+            return Err(anyhow!(
+                "Profiler capability check returned status {}: {}",
+                health_status,
+                response_error_text(health_resp).await?
+            ));
+        }
+        let health: Value = health_resp.json().await?;
+        let supported = health
+            .pointer("/capabilities/request_capture_options")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                anyhow!(
+                    "Profiler does not advertise request-scoped NCU capture; \
+                     refusing to silently run the default capture window"
+                )
+            })?;
+        for name in &requested_capture_options {
+            if !supported.iter().any(|item| item.as_str() == Some(*name)) {
+                return Err(anyhow!(
+                    "Profiler does not advertise request capture option {}",
+                    name
+                ));
+            }
+        }
+    }
+
     let filename = filepath
         .as_ref()
         .file_name()
@@ -673,8 +718,18 @@ pub async fn profile_brev_solution<P: AsRef<Path>>(
     let mut form = Form::new()
         .part("file", part)
         .text("leaderboard", leaderboard.to_string());
-    if let Some(index) = benchmark_index {
+    if let Some(index) = options.benchmark_index {
         form = form.text("benchmark_index", index.to_string());
+    }
+
+    if let Some(value) = &options.ncu_kernel_name {
+        form = form.text("ncu_kernel_name", value.clone());
+    }
+    if let Some(value) = &options.ncu_kernel_name_base {
+        form = form.text("ncu_kernel_name_base", value.clone());
+    }
+    if let Some(value) = options.ncu_launch_count {
+        form = form.text("ncu_launch_count", value.to_string());
     }
 
     let resp = client
@@ -887,12 +942,15 @@ async fn download_profile_artifacts(
 }
 
 #[derive(Debug)]
-struct ExtractedProfileArtifacts {
-    details: Vec<PathBuf>,
-    reports: Vec<PathBuf>,
+pub(crate) struct ExtractedProfileArtifacts {
+    pub details: Vec<PathBuf>,
+    pub reports: Vec<PathBuf>,
 }
 
-fn extract_profile_artifacts(zip_path: &Path, bytes: &[u8]) -> Result<ExtractedProfileArtifacts> {
+pub(crate) fn extract_profile_artifacts(
+    zip_path: &Path,
+    bytes: &[u8],
+) -> Result<ExtractedProfileArtifacts> {
     let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(|e| {
         anyhow!(
             "Failed to read profile artifact {}: {}",

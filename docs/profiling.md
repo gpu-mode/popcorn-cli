@@ -1,6 +1,6 @@
 # Nsight Compute Profiling
 
-This profiles GPU Mode submissions on the hosted B200 Nsight Compute service and
+The default profiler runs GPU Mode submissions in your Modal account on B200 and
 downloads agent-readable `ncu-details.txt` / `ncu-details.csv` artifacts. The
 full `.ncu-rep` GUI report is still included for local inspection.
 
@@ -8,23 +8,39 @@ The profiler uses the `benchmarks:` list from the active `reference-kernels`
 checkout. `--benchmark-index N` profiles `benchmarks[N]`; omitting
 `--benchmark-index` profiles every benchmark entry for that leaderboard.
 
-## 1. Install and Register
+## Supported problems
+
+The task evaluator must implement `profile` mode and launch the submission in
+an NVTX push/pop range named `custom_kernel`. A PyTorch-profiler-only path is
+not sufficient. QR, QR v2, Eigh, Cholesky, and the shared NVIDIA evaluator have
+the required NCU path; only QR v2 has been tested end to end for this CLI change.
+Check the actual evaluator selected by the task, since task-specific copies may
+have different support. AMD and multi-GPU NCU profiling are unsupported.
+
+Problem authors can follow the reference-kernels
+[NCU integration guide](https://github.com/gpu-mode/reference-kernels/blob/docs/ncu-problem-guide/docs/ncu-profiling.md).
+
+## 1. Install Popcorn and Modal
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/install.sh | bash
-popcorn register discord
+pip install modal
+modal setup
 ```
 
-Restart your terminal if `popcorn` is not found after installation.
+`--profile` and `--mode profile` use your own Modal
+account and imply plain output. You do not need Popcorn registration or a
+profiler URL. Modal bills this GPU run to your configured workspace. Use
+`--gpu` to override B200, or put a GPU directive in the submission.
 
-## 2. Set the Hosted Profiler URL
+## 2. Source versions and artifacts
 
-```bash
-export POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run
-```
-
-`BREV_PROFILER_URL` is also accepted as a fallback, but
-`POPCORN_BREV_PROFILER_URL` is preferred.
+Each invocation resolves the latest `reference-kernels` and `kernelbot` main
+commits. You can pin them with `POPCORN_REFERENCE_KERNELS_REF` and
+`POPCORN_KERNELBOT_REF`. Every profile saves a `manifest.json` with both source
+refs, the problem directory, GPU/system information, selected benchmark specs,
+and NCU capture options alongside the reports in a unique `popcorn-profile-*`
+directory. `--output` saves the text summary; the artifacts remain in that directory.
 
 ## 3. Profile QR v2
 
@@ -41,7 +57,7 @@ Profile one benchmark shape:
 ```bash
 popcorn submit submission.py \
   --leaderboard qr_v2 \
-  --profile-brev \
+  --profile \
   --benchmark-index 0 \
   --no-tui
 ```
@@ -67,14 +83,13 @@ Profile the dense `n=512` leverage row:
 ```bash
 popcorn submit submission.py \
   --leaderboard eigh \
-  --profile-brev \
+  --profile \
   --benchmark-index 3 \
   --no-tui
 ```
 
-The hosted profiler uses a deeper Nsight Compute launch window for `eigh` than
-for QR v2 so PyTorch/cuSOLVER submissions can reach solver-path kernels after
-clone/setup launches.
+The default capture window is 10 kernel launches per benchmark. For late solver
+kernels, select a kernel name or increase `--ncu-launch-count`.
 
 Current `eigh` benchmark index table from `reference-kernels` main
 `4a1153e`:
@@ -110,31 +125,41 @@ Profile the `batch=4096, n=32` benchmark:
 ```bash
 popcorn submit submission.py \
   --leaderboard cholesky \
-  --profile-brev \
+  --profile \
   --benchmark-index 0 \
   --no-tui
 ```
 
-The profiler will only profile the first 10 kernels, so if your solution uses more than that (the default Pytorch implementation does), then the profiler might be of limited use.
+Capture late kernels with the same filters on any leaderboard:
+
+```bash
+popcorn submit submission.py --leaderboard cholesky --profile --benchmark-index 0 \
+  --ncu-kernel-name 'regex:my_kernel' --ncu-kernel-name-base demangled \
+  --ncu-launch-count 2
+```
+
+NCU follows child processes, captures the evaluator's `custom_kernel` NVTX range,
+and leaves GPU clocks unchanged. Empty or failed captures return an error.
+Multi-GPU profiling is unsupported.
 
 ## 6. Read the Details
 
 After the run finishes, the CLI downloads and extracts files like:
 
 ```text
-profile.0-batch-20-n-32-cond-1-seed-43214.zip
-profile.0-batch-20-n-32-cond-1-seed-43214/ncu-details.txt
-profile.0-batch-20-n-32-cond-1-seed-43214/ncu-details.csv
-profile.0-batch-20-n-32-cond-1-seed-43214/profile.ncu-rep   # optional GUI report
+popcorn-profile-<run>/profile-0.zip
+popcorn-profile-<run>/profile-0/ncu-details.txt
+popcorn-profile-<run>/profile-0/ncu-details.csv
+popcorn-profile-<run>/profile-0/profile.ncu-rep   # optional GUI report
 ```
 
 Use `ncu-details.txt` or `ncu-details.csv` as the default artifact for AI
-analysis. The CLI prints clickable links for these detail files.
+analysis. The CLI prints local paths for the detail files and report.
 
-The last line printed by the CLI opens the optional GUI report on macOS:
+Open the GUI report on macOS:
 
 ```bash
-open -a "NVIDIA Nsight Compute" 'profile.0-batch-20-n-32-cond-1-seed-43214/profile.ncu-rep'
+open -a "NVIDIA Nsight Compute" 'popcorn-profile-<run>/profile-0/profile.ncu-rep'
 ```
 
 ## Profile All Benchmark Shapes
@@ -144,7 +169,7 @@ Omit `--benchmark-index`:
 ```bash
 popcorn submit submission.py \
   --leaderboard eigh \
-  --profile-brev \
+  --profile \
   --no-tui
 ```
 
@@ -165,3 +190,18 @@ For leaderboard submission:
 ```bash
 popcorn submit submission.py --leaderboard qr_v2 --gpu B200 --mode leaderboard --no-tui
 ```
+
+## Explicit Brev profiling
+
+Use `--profile-brev` to select the hosted Brev service explicitly. `--profile`
+uses Modal only; errors never trigger a switch to Brev. Brev requires Popcorn
+registration:
+
+```bash
+popcorn register discord
+export POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run
+popcorn submit submission.py --leaderboard qr_v2 --profile-brev --benchmark-index 0
+```
+
+`BREV_PROFILER_URL` is also accepted. Brev profiling uses the service's deployed
+reference-kernels checkout; Modal source-ref overrides do not apply to it.

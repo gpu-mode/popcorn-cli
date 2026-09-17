@@ -62,6 +62,10 @@ pub struct Cli {
     #[arg(long)]
     pub mode: Option<String>,
 
+    /// Profile with Nsight Compute in your Modal account (default GPU: B200).
+    #[arg(long, conflicts_with = "profile_brev")]
+    pub profile: bool,
+
     /// Profile on the hosted GPU Mode Brev B200 and save Nsight Compute artifacts locally.
     /// Requires POPCORN_BREV_PROFILER_URL, or BREV_PROFILER_URL as a fallback.
     #[arg(long)]
@@ -72,9 +76,8 @@ pub struct Cli {
     #[arg(long, conflicts_with = "profile_brev")]
     pub local: bool,
 
-    /// Optional: Profile a single benchmark index when using --profile-brev
-    #[arg(long)]
-    pub benchmark_index: Option<usize>,
+    #[command(flatten)]
+    pub profile_options: crate::local::ProfileOptions,
 
     // Optional: Specify output file
     #[arg(short, long)]
@@ -151,6 +154,10 @@ enum Commands {
         #[arg(long)]
         mode: Option<String>,
 
+        /// Profile with Nsight Compute in your Modal account (default GPU: B200).
+        #[arg(long, conflicts_with = "profile_brev")]
+        profile: bool,
+
         /// Profile on the hosted GPU Mode Brev B200 and save Nsight Compute artifacts locally.
         /// Requires POPCORN_BREV_PROFILER_URL, or BREV_PROFILER_URL as a fallback.
         #[arg(long)]
@@ -161,9 +168,8 @@ enum Commands {
         #[arg(long, conflicts_with = "profile_brev")]
         local: bool,
 
-        /// Optional: Profile a single benchmark index when using --profile-brev
-        #[arg(long)]
-        benchmark_index: Option<usize>,
+        #[command(flatten)]
+        profile_options: crate::local::ProfileOptions,
 
         // Optional: Specify output file
         #[arg(short, long)]
@@ -213,26 +219,45 @@ pub async fn execute(cli: Cli) -> Result<()> {
             leaderboard,
             mode,
             profile_brev,
+            profile,
             local,
-            benchmark_index,
+            profile_options,
             output,
             no_tui,
         }) => {
             // Use filepath from Submit command first, fallback to top-level filepath
             let final_filepath = filepath.or(cli.filepath);
+            let profile_brev = profile_brev || cli.profile_brev;
+            let profile = profile || cli.profile;
+            let local = local || cli.local;
+            if profile_brev && (profile || local) {
+                return Err(anyhow!(
+                    "--profile-brev cannot be combined with --profile or --local"
+                ));
+            }
+            let profile_options = profile_options.merge(cli.profile_options);
             let final_gpu = if profile_brev {
                 Some("B200_Brev".to_string())
             } else {
-                gpu.clone()
+                gpu.clone().or(cli.gpu.clone())
             };
-            let final_mode = if profile_brev {
+            let final_mode = if profile_brev || profile {
                 Some("profile".to_string())
             } else {
-                mode.clone()
+                mode.clone().or(cli.mode.clone())
             };
 
-            if local {
-                submit::run_submit_local(final_filepath, gpu, leaderboard, mode, output).await
+            profile_options.validate(final_mode.as_deref())?;
+            if local || use_modal_profile(profile, profile_brev, final_mode.as_deref()) {
+                submit::run_submit_local(
+                    final_filepath,
+                    final_gpu,
+                    leaderboard.or(cli.leaderboard),
+                    final_mode,
+                    profile_options,
+                    output,
+                )
+                .await
             } else {
                 let config = load_config()?;
                 let cli_id = config.cli_id.ok_or_else(|| {
@@ -245,14 +270,14 @@ pub async fn execute(cli: Cli) -> Result<()> {
                     )
                 })?;
 
-                if no_tui || profile_brev {
+                if no_tui || cli.no_tui || is_profile_mode(final_mode.as_deref()) {
                     submit::run_submit_plain(
                         final_filepath, // Resolved filepath
                         final_gpu,      // From Submit command
                         leaderboard,    // From Submit command
                         final_mode,     // From Submit command
                         cli_id,
-                        benchmark_index.or(cli.benchmark_index),
+                        profile_options,
                         output, // From Submit command
                     )
                     .await
@@ -318,6 +343,8 @@ pub async fn execute(cli: Cli) -> Result<()> {
         None => {
             // Check if any of the submission-related flags were used at the top level
             if !cli.profile_brev
+                && !cli.profile
+                && !is_profile_mode(cli.mode.as_deref())
                 && !cli.local
                 && (cli.gpu.is_some() || cli.leaderboard.is_some() || cli.mode.is_some())
             {
@@ -329,12 +356,19 @@ pub async fn execute(cli: Cli) -> Result<()> {
 
             // Handle the case where only a filepath is provided (for backward compatibility)
             if let Some(top_level_filepath) = cli.filepath {
-                if cli.local {
+                let mode = if cli.profile || cli.profile_brev {
+                    Some("profile".to_string())
+                } else {
+                    cli.mode
+                };
+                cli.profile_options.validate(mode.as_deref())?;
+                if cli.local || use_modal_profile(cli.profile, cli.profile_brev, mode.as_deref()) {
                     submit::run_submit_local(
                         Some(top_level_filepath),
                         cli.gpu,
                         cli.leaderboard,
-                        cli.mode,
+                        mode,
+                        cli.profile_options,
                         cli.output,
                     )
                     .await
@@ -350,14 +384,18 @@ pub async fn execute(cli: Cli) -> Result<()> {
                         )
                     })?;
 
-                    if cli.profile_brev {
+                    if cli.profile_brev || is_profile_mode(mode.as_deref()) {
                         submit::run_submit_plain(
                             Some(top_level_filepath),
-                            Some("B200_Brev".to_string()),
+                            if cli.profile_brev {
+                                Some("B200_Brev".to_string())
+                            } else {
+                                cli.gpu
+                            },
                             cli.leaderboard,
                             Some("profile".to_string()),
                             cli_id,
-                            cli.benchmark_index,
+                            cli.profile_options,
                             cli.output,
                         )
                         .await
@@ -380,5 +418,64 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 ))
             }
         }
+    }
+}
+
+fn use_modal_profile(profile: bool, brev: bool, mode: Option<&str>) -> bool {
+    !brev && (profile || is_profile_mode(mode))
+}
+
+fn is_profile_mode(mode: Option<&str>) -> bool {
+    mode.is_some_and(|mode| mode.eq_ignore_ascii_case("profile"))
+}
+
+#[cfg(test)]
+mod profile_tests {
+    use super::*;
+
+    #[test]
+    fn profile_is_modal_and_brev_requires_its_explicit_flag() {
+        assert!(use_modal_profile(true, false, None));
+        assert!(use_modal_profile(false, false, Some("profile")));
+        assert!(use_modal_profile(false, false, Some("PROFILE")));
+        assert!(!use_modal_profile(false, true, Some("profile")));
+        assert!(!use_modal_profile(false, false, Some("benchmark")));
+    }
+
+    #[test]
+    fn profile_flags_accept_filters_at_both_entry_points() {
+        for prefix in [vec!["popcorn"], vec!["popcorn", "submit"]] {
+            for flag in ["--profile", "--profile-brev"] {
+                let mut args = prefix.clone();
+                args.extend([
+                    "submission.py",
+                    flag,
+                    "--benchmark-index",
+                    "3",
+                    "--ncu-kernel-name",
+                    "regex:custom",
+                    "--ncu-launch-count",
+                    "2",
+                ]);
+                assert!(Cli::try_parse_from(args).is_ok());
+            }
+        }
+        assert!(Cli::try_parse_from([
+            "popcorn",
+            "submit",
+            "submission.py",
+            "--profile",
+            "--profile-brev"
+        ])
+        .is_err());
+        assert!(Cli::try_parse_from([
+            "popcorn",
+            "submit",
+            "submission.py",
+            "--profile",
+            "--ncu-kernel-name-base",
+            "invalid"
+        ])
+        .is_err());
     }
 }
