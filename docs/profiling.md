@@ -1,11 +1,11 @@
 # Nsight Compute Profiling
 
-The default profiler runs GPU Mode submissions in your Modal account on B200 and
+The default profiler submits through GPU Mode on B200 and
 downloads agent-readable `ncu-details.txt` / `ncu-details.csv` artifacts. The
 full `.ncu-rep` GUI report is still included for local inspection.
 
-The profiler uses the `benchmarks:` list from the active `reference-kernels`
-checkout. `--benchmark-index N` profiles `benchmarks[N]`; omitting
+The profiler uses the `benchmarks:` list from the task synced into the hosted
+leaderboard configuration. `--benchmark-index N` profiles `benchmarks[N]`; omitting
 `--benchmark-index` profiles every benchmark entry for that leaderboard.
 
 ## Supported problems
@@ -18,29 +18,34 @@ Check the actual evaluator selected by the task, since task-specific copies may
 have different support. AMD and multi-GPU NCU profiling are unsupported.
 
 Problem authors can follow the reference-kernels
-[NCU integration guide](https://github.com/gpu-mode/reference-kernels/blob/bcfa2447fe77ca90456d46f41ff73d38bce6060a/docs/ncu-profiling.md).
+[NCU integration guide](https://github.com/gpu-mode/reference-kernels/blob/a8044f1658acd4104558bedd3e78a8f096fd778a/docs/ncu-profiling.md).
 
-## 1. Install Popcorn and Modal
+## 1. Install and register
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gpu-mode/popcorn-cli/main/install.sh | bash
-pip install modal
-modal setup
+popcorn register discord
 ```
 
-`--profile` and `--mode profile` use your own Modal
-account and imply plain output. You do not need Popcorn registration or a
-profiler URL. Modal bills this GPU run to your configured workspace. Use
-`--gpu` to override B200, or put a GPU directive in the submission.
+`--profile` and `--mode profile` use the normal authenticated GPU Mode API and
+imply plain output. No Modal installation, provider account, provider token,
+or profiling URL is needed. The service owns the compute credentials. B200 is
+the default GPU; use `--gpu` or a submission GPU directive to select another
+supported GPU. The existing `--local` evaluation option is a separate workflow
+for users deliberately choosing their own compute account.
 
-## 2. Source versions and artifacts
+## 2. Benchmark selection and artifacts
 
-Each invocation resolves the latest `reference-kernels` and `kernelbot` main
-commits. You can pin them with `POPCORN_REFERENCE_KERNELS_REF` and
-`POPCORN_KERNELBOT_REF`. Every profile saves a `manifest.json` with both source
-refs, the problem directory, GPU/system information, selected benchmark specs,
-and NCU capture options alongside the reports in a unique `popcorn-profile-*`
-directory. `--output` saves the text summary; the artifacts remain in that directory.
+The hosted service uses the task/evaluator already synced to that leaderboard.
+Local reference-kernels edits and `POPCORN_REFERENCE_KERNELS_REF` do not change
+a hosted run. Problem authors should ask an operator to sync their published
+revision before validating it.
+
+Each profile saves a `manifest.json` containing the leaderboard, GPU/system
+information, selected benchmark specs, capture options, and an evaluation-config
+SHA-256 digest. Reports go into a unique `popcorn-profile-*` directory.
+`--output` saves the text summary; artifacts remain in that directory. The
+config digest identifies the evaluated content; it is not a repository commit.
 
 ## 3. Profile QR v2
 
@@ -147,10 +152,10 @@ Multi-GPU profiling is unsupported.
 After the run finishes, the CLI downloads and extracts files like:
 
 ```text
-popcorn-profile-<run>/profile-0.zip
-popcorn-profile-<run>/profile-0/ncu-details.txt
-popcorn-profile-<run>/profile-0/ncu-details.csv
-popcorn-profile-<run>/profile-0/profile.ncu-rep   # optional GUI report
+popcorn-profile-<run>/result-0/profile-0.zip
+popcorn-profile-<run>/result-0/profile-0/ncu-details.txt
+popcorn-profile-<run>/result-0/profile-0/ncu-details.csv
+popcorn-profile-<run>/result-0/profile-0/profile.ncu-rep   # optional GUI report
 ```
 
 Use `ncu-details.txt` or `ncu-details.csv` as the default artifact for AI
@@ -159,7 +164,7 @@ analysis. The CLI prints local paths for the detail files and report.
 Open the GUI report on macOS:
 
 ```bash
-open -a "NVIDIA Nsight Compute" 'popcorn-profile-<run>/profile-0/profile.ncu-rep'
+open -a "NVIDIA Nsight Compute" 'popcorn-profile-<run>/result-0/profile-0/profile.ncu-rep'
 ```
 
 ## Profile All Benchmark Shapes
@@ -194,7 +199,7 @@ popcorn submit submission.py --leaderboard qr_v2 --gpu B200 --mode leaderboard -
 ## Explicit Brev profiling
 
 Use `--profile-brev` to select the hosted Brev service explicitly. `--profile`
-uses Modal only; errors never trigger a switch to Brev. Brev requires Popcorn
+uses the GPU Mode API; errors never trigger a switch to Brev. Brev requires Popcorn
 registration:
 
 ```bash
@@ -203,5 +208,5 @@ export POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v
 popcorn submit submission.py --leaderboard qr_v2 --profile-brev --benchmark-index 0
 ```
 
-`BREV_PROFILER_URL` is also accepted. Brev profiling uses the service's deployed
-reference-kernels checkout; Modal source-ref overrides do not apply to it.
+`BREV_PROFILER_URL` is also accepted. Brev profiling uses that service's deployed
+reference-kernels checkout.

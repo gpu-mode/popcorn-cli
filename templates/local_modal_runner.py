@@ -5,9 +5,6 @@ local run exercises the same public task definition and evaluation sequence.
 """
 
 import dataclasses
-import base64
-import functools
-import subprocess
 import glob
 import json
 import os
@@ -136,19 +133,9 @@ cuda_image = (
                 "/opt/cutlass/include:/opt/cutlass/tools/util/include"
             ),
             "PYTHONPATH": "/opt/kernelbot/src",
-            # The remote worker imports this module too. Carry only public build
-            # configuration across, never the user's local paths or credentials.
-            "POPCORN_REFERENCE_KERNELS_REF": reference_ref,
-            "POPCORN_KERNELBOT_REF": kernelbot_ref,
-            "POPCORN_LOCAL_MODAL_GPU": os.environ["POPCORN_LOCAL_MODAL_GPU"],
-            "POPCORN_LOCAL_MODE": os.environ["POPCORN_LOCAL_MODE"],
         }
     )
 )
-
-# CUDA devel includes NCU. Verify the executable at image build time.
-if os.environ.get("POPCORN_LOCAL_MODE") == "profile":
-    cuda_image = cuda_image.run_commands("ncu --version")
 
 app = modal.App("popcorn-local-runner", image=cuda_image)
 modal_gpu = os.environ["POPCORN_LOCAL_MODAL_GPU"]
@@ -179,76 +166,11 @@ def _find_problem(leaderboard: str) -> tuple[Path, list[str]]:
     return Path("/opt/reference-kernels/problems") / directory / "task.yml", supported_gpus
 
 
-def _select_benchmarks(config: dict, options: dict) -> dict:
-    benchmarks = config.get("benchmarks", [])
-    if not benchmarks:
-        raise ValueError("This task has no benchmark shapes to profile")
-    index = options.get("benchmark_index")
-    if index is None:
-        return config
-    if not isinstance(index, int) or index < 0 or index >= len(benchmarks):
-        raise ValueError(f"Benchmark index {index} is out of range (0..{len(benchmarks) - 1})")
-    return {**config, "benchmarks": [benchmarks[index]]}
-
-
-def _ncu_command(call: list[str], output_dir: Path, options: dict) -> list[str]:
-    count = options.get("ncu_launch_count")
-    if count is None:
-        count = 10
-    if not isinstance(count, int) or count <= 0:
-        raise ValueError("NCU launch count must be a positive integer")
-    command = [
-        "ncu", "--set", "full", "--target-processes", "all",
-        "--nvtx", "--nvtx-include", "custom_kernel/",
-        "--import-source", "1", "--launch-count", str(count),
-        "--cache-control", "all", "--clock-control", "none",
-        "--replay-mode", "kernel", "--force-overwrite",
-        "--export", str(output_dir / "profile.ncu-rep"),
-    ]
-    for key, flag in [("ncu_kernel_name", "--kernel-name"),
-                      ("ncu_kernel_name_base", "--kernel-name-base")]:
-        if options.get(key):
-            command.extend([flag, options[key]])
-    return command + ["--", *call]
-
-
-def _profile_ncu(call, seed, timeout, multi_gpu, output_dir, *, options):
-    from libkernelbot.run_eval import ProfileResult, _directory_to_zip_bytes, run_program
-
-    if multi_gpu:
-        raise ValueError("Nsight Compute profiling requires a single GPU")
-    result = run_program(
-        _ncu_command(call, output_dir, options), seed=seed, timeout=timeout,
-        multi_gpu=False, extra_env={"POPCORN_NCU": "1"},
-    )
-    report = output_dir / "profile.ncu-rep"
-    if not result.success or not report.is_file():
-        result.success = False
-        result.stderr += "\nNsight Compute did not produce a report. Check NCU output and the evaluator's profile mode/NVTX range."
-        return result, None
-    for name, extra in [("ncu-details.txt", []), ("ncu-details.csv", ["--csv"])]:
-        details = subprocess.run(
-            ["ncu", "--import", str(report), "--page", "details", *extra],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=120,
-        )
-        if details.returncode:
-            result.success = False
-            result.stderr += f"\nFailed to export {name}: {details.stderr}"
-        else:
-            (output_dir / name).write_text(details.stdout)
-    details_path = output_dir / "ncu-details.txt"
-    if details_path.exists():
-        result.result["benchmark.0.report"] = base64.b64encode(details_path.read_bytes()).decode()
-    return result, ProfileResult(
-        profiler="Nsight-Compute", trace=_directory_to_zip_bytes(output_dir), download_url=None,
-    )
-
-
 @app.function(gpu=modal_gpu, timeout=3600)
-def evaluate(submission: str, leaderboard: str, gpu: str, mode: str, profile_options: dict) -> dict:
+def evaluate(submission: str, leaderboard: str, gpu: str, mode: str) -> dict:
     try:
         from libkernelbot.consts import GPU_TO_SM, SubmissionMode
-        from libkernelbot import run_eval
+        from libkernelbot.run_eval import run_config
         from libkernelbot.task import build_task_config, make_task_definition
 
         task_path, supported_gpus = _find_problem(leaderboard)
@@ -265,29 +187,13 @@ def evaluate(submission: str, leaderboard: str, gpu: str, mode: str, profile_opt
             arch=GPU_TO_SM[gpu],
             mode=SubmissionMode(mode),
         )
-        if mode == "profile":
-            config = _select_benchmarks(config, profile_options)
-            # Keep KernelBot's task setup, timeouts and per-shape evaluator execution.
-            # Only replace NCU capture to add Modal-safe clocks and CLI filters.
-            original_profile = run_eval.profile_program_ncu
-            try:
-                run_eval.profile_program_ncu = functools.partial(_profile_ncu, options=profile_options)
-                result = run_eval.run_config(config)
-            finally:
-                run_eval.profile_program_ncu = original_profile
-            index = profile_options.get("benchmark_index")
-            if index is not None and "profile.0" in result.runs:
-                result.runs[f"profile.{index}"] = result.runs.pop("profile.0")
-        else:
-            result = run_eval.run_config(config)
+        result = run_config(config)
         return {
             "leaderboard": leaderboard,
             "problem_directory": str(task_path.parent.relative_to("/opt/reference-kernels/problems")),
             "gpu": gpu,
             "mode": mode,
             "ranking_by": definition.task.ranking_by.value,
-            "profile_options": profile_options,
-            "benchmark_specs": config.get("benchmarks", []),
             "reference_kernels_ref": reference_ref,
             "kernelbot_ref": kernelbot_ref,
             "result": dataclasses.asdict(result),
@@ -316,6 +222,5 @@ def main():
         os.environ["POPCORN_LOCAL_LEADERBOARD"],
         os.environ["POPCORN_LOCAL_GPU"],
         os.environ["POPCORN_LOCAL_MODE"],
-        json.loads(os.environ.get("POPCORN_PROFILE_OPTIONS", "{}")),
     )
     print(RESULT_MARKER + json.dumps(payload, default=str, separators=(",", ":")))

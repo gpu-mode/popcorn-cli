@@ -62,7 +62,7 @@ pub struct Cli {
     #[arg(long)]
     pub mode: Option<String>,
 
-    /// Profile with Nsight Compute in your Modal account (default GPU: B200).
+    /// Profile with Nsight Compute through GPU Mode (default GPU: B200).
     #[arg(long, conflicts_with = "profile_brev")]
     pub profile: bool,
 
@@ -77,7 +77,7 @@ pub struct Cli {
     pub local: bool,
 
     #[command(flatten)]
-    pub profile_options: crate::local::ProfileOptions,
+    pub profile_options: crate::profile::ProfileOptions,
 
     // Optional: Specify output file
     #[arg(short, long)]
@@ -154,7 +154,7 @@ enum Commands {
         #[arg(long)]
         mode: Option<String>,
 
-        /// Profile with Nsight Compute in your Modal account (default GPU: B200).
+        /// Profile with Nsight Compute through GPU Mode (default GPU: B200).
         #[arg(long, conflicts_with = "profile_brev")]
         profile: bool,
 
@@ -169,7 +169,7 @@ enum Commands {
         local: bool,
 
         #[command(flatten)]
-        profile_options: crate::local::ProfileOptions,
+        profile_options: crate::profile::ProfileOptions,
 
         // Optional: Specify output file
         #[arg(short, long)]
@@ -230,9 +230,9 @@ pub async fn execute(cli: Cli) -> Result<()> {
             let profile_brev = profile_brev || cli.profile_brev;
             let profile = profile || cli.profile;
             let local = local || cli.local;
-            if profile_brev && (profile || local) {
+            if (profile_brev && (profile || local)) || (local && profile) {
                 return Err(anyhow!(
-                    "--profile-brev cannot be combined with --profile or --local"
+                    "Profiling uses the hosted service; --local cannot be combined with profiling, and --profile conflicts with --profile-brev"
                 ));
             }
             let profile_options = profile_options.merge(cli.profile_options);
@@ -248,13 +248,15 @@ pub async fn execute(cli: Cli) -> Result<()> {
             };
 
             profile_options.validate(final_mode.as_deref())?;
-            if local || use_modal_profile(profile, profile_brev, final_mode.as_deref()) {
+            if local && is_profile_mode(final_mode.as_deref()) {
+                return Err(anyhow!("Profiling uses the hosted service; omit --local"));
+            }
+            if local {
                 submit::run_submit_local(
                     final_filepath,
                     final_gpu,
                     leaderboard.or(cli.leaderboard),
                     final_mode,
-                    profile_options,
                     output,
                 )
                 .await
@@ -274,10 +276,11 @@ pub async fn execute(cli: Cli) -> Result<()> {
                     submit::run_submit_plain(
                         final_filepath, // Resolved filepath
                         final_gpu,      // From Submit command
-                        leaderboard,    // From Submit command
-                        final_mode,     // From Submit command
+                        leaderboard.or(cli.leaderboard),
+                        final_mode, // From Submit command
                         cli_id,
                         profile_options,
+                        profile_brev,
                         output, // From Submit command
                     )
                     .await
@@ -285,8 +288,8 @@ pub async fn execute(cli: Cli) -> Result<()> {
                     submit::run_submit_tui(
                         final_filepath, // Resolved filepath
                         final_gpu,      // From Submit command
-                        leaderboard,    // From Submit command
-                        final_mode,     // From Submit command
+                        leaderboard.or(cli.leaderboard),
+                        final_mode, // From Submit command
                         cli_id,
                         output, // From Submit command
                     )
@@ -362,13 +365,15 @@ pub async fn execute(cli: Cli) -> Result<()> {
                     cli.mode
                 };
                 cli.profile_options.validate(mode.as_deref())?;
-                if cli.local || use_modal_profile(cli.profile, cli.profile_brev, mode.as_deref()) {
+                if cli.local && is_profile_mode(mode.as_deref()) {
+                    return Err(anyhow!("Profiling uses the hosted service; omit --local"));
+                }
+                if cli.local {
                     submit::run_submit_local(
                         Some(top_level_filepath),
                         cli.gpu,
                         cli.leaderboard,
                         mode,
-                        cli.profile_options,
                         cli.output,
                     )
                     .await
@@ -396,6 +401,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
                             Some("profile".to_string()),
                             cli_id,
                             cli.profile_options,
+                            cli.profile_brev,
                             cli.output,
                         )
                         .await
@@ -421,10 +427,6 @@ pub async fn execute(cli: Cli) -> Result<()> {
     }
 }
 
-fn use_modal_profile(profile: bool, brev: bool, mode: Option<&str>) -> bool {
-    !brev && (profile || is_profile_mode(mode))
-}
-
 fn is_profile_mode(mode: Option<&str>) -> bool {
     mode.is_some_and(|mode| mode.eq_ignore_ascii_case("profile"))
 }
@@ -433,13 +435,19 @@ fn is_profile_mode(mode: Option<&str>) -> bool {
 mod profile_tests {
     use super::*;
 
-    #[test]
-    fn profile_is_modal_and_brev_requires_its_explicit_flag() {
-        assert!(use_modal_profile(true, false, None));
-        assert!(use_modal_profile(false, false, Some("profile")));
-        assert!(use_modal_profile(false, false, Some("PROFILE")));
-        assert!(!use_modal_profile(false, true, Some("profile")));
-        assert!(!use_modal_profile(false, false, Some("benchmark")));
+    #[tokio::test]
+    async fn local_rejects_profile_mode_inherited_from_top_level() {
+        let cli = Cli::try_parse_from([
+            "popcorn",
+            "--mode",
+            "profile",
+            "submit",
+            "submission.py",
+            "--local",
+        ])
+        .unwrap();
+        let error = execute(cli).await.unwrap_err().to_string();
+        assert!(error.contains("omit --local"));
     }
 
     #[test]

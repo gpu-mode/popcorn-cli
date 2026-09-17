@@ -681,13 +681,15 @@ pub async fn run_submit_tui(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_submit_plain(
     filepath: Option<String>,
     gpu: Option<String>,
     leaderboard: Option<String>,
     mode: Option<String>,
     cli_id: String,
-    profile_options: crate::local::ProfileOptions,
+    profile_options: crate::profile::ProfileOptions,
+    profile_brev: bool,
     output: Option<String>,
 ) -> Result<()> {
     let file_to_submit = match filepath {
@@ -717,6 +719,11 @@ pub async fn run_submit_plain(
             } else {
                 None
             }
+        })
+        .or_else(|| {
+            mode.as_deref()
+                .is_some_and(|m| m.eq_ignore_ascii_case("profile"))
+                .then(|| "B200".to_string())
         })
         .ok_or_else(|| anyhow!("GPU not specified. Use --gpu flag or add GPU directive to file"))?;
 
@@ -749,9 +756,7 @@ pub async fn run_submit_plain(
 
     // Create client and submit
     let client = service::create_client(Some(cli_id))?;
-    let result = if final_mode.eq_ignore_ascii_case("profile")
-        && final_gpu.eq_ignore_ascii_case("B200_Brev")
-    {
+    let result = if final_mode.eq_ignore_ascii_case("profile") && profile_brev {
         service::profile_brev_solution(
             &client,
             &file_to_submit,
@@ -761,6 +766,17 @@ pub async fn run_submit_plain(
             Some(Box::new(|msg| {
                 eprintln!("{}", msg);
             })),
+        )
+        .await?
+    } else if final_mode.eq_ignore_ascii_case("profile") {
+        service::profile_solution(
+            &client,
+            &file_to_submit,
+            &file_content,
+            &final_leaderboard,
+            &final_gpu,
+            &profile_options,
+            Some(Box::new(|msg| eprintln!("{}", msg))),
         )
         .await?
     } else {
@@ -813,11 +829,9 @@ pub async fn run_submit_local(
     gpu: Option<String>,
     leaderboard: Option<String>,
     mode: Option<String>,
-    profile_options: crate::local::ProfileOptions,
     output: Option<String>,
 ) -> Result<()> {
-    let file_to_submit =
-        filepath.ok_or_else(|| anyhow!("File path is required with --local or --profile"))?;
+    let file_to_submit = filepath.ok_or_else(|| anyhow!("File path is required with --local"))?;
     let submission_path = Path::new(&file_to_submit);
     if !submission_path.exists() {
         return Err(anyhow!("File not found: {}", file_to_submit));
@@ -835,18 +849,8 @@ pub async fn run_submit_local(
         ));
     }
 
-    let final_mode = mode.ok_or_else(|| {
-        anyhow!(
-            "Submission mode not specified. Use --mode test, benchmark, leaderboard, or profile"
-        )
-    })?;
     let final_gpu = gpu
         .or_else(|| directives.gpus.first().cloned())
-        .or_else(|| {
-            final_mode
-                .eq_ignore_ascii_case("profile")
-                .then(|| "B200".to_string())
-        })
         .ok_or_else(|| anyhow!("GPU not specified. Use --gpu or add a GPU directive"))?;
     let final_leaderboard = leaderboard
         .or_else(|| {
@@ -855,6 +859,9 @@ pub async fn run_submit_local(
         .ok_or_else(|| {
             anyhow!("Leaderboard not specified. Use --leaderboard or add a leaderboard directive")
         })?;
+    let final_mode = mode.ok_or_else(|| {
+        anyhow!("Submission mode not specified. Use --mode test, benchmark, or leaderboard")
+    })?;
 
     eprintln!("Running public evaluation in your Modal account");
     eprintln!("Leaderboard: {}", final_leaderboard);
@@ -868,7 +875,6 @@ pub async fn run_submit_local(
         &final_leaderboard,
         &final_gpu,
         &final_mode,
-        &profile_options,
     )
     .await?;
 

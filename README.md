@@ -7,10 +7,10 @@ Tested on linux and mac but should just work on Windows as well.
 
 ## New: Nsight Compute Profiling
 
-Profile submissions on Modal (B200 by default).
-Install and authenticate the Modal CLI first (`pip install modal && modal setup`).
-`--profile` and `--mode profile` run in your Modal account, bypassing Popcorn
-registration. Use `--profile-brev` to explicitly select the hosted Brev service.
+Profile submissions through GPU Mode (B200 by default).
+Use your normal Popcorn registration. `--profile` and `--mode profile` submit
+through GPU Mode and save NCU reports locally; no provider account or SDK is
+needed. Use `--profile-brev` to explicitly select the Brev service.
 See [docs/profiling.md](docs/profiling.md) for a complete copy-paste flow.
 
 Quick QR v2 example:
@@ -138,7 +138,7 @@ popcorn submit solution.py
 # Direct submission with all options
 popcorn submit --leaderboard grayscale_v2 --gpu A100 --mode leaderboard solution.py
 
-# Nsight Compute profile on Modal, using your account (B200 by default)
+# Nsight Compute profile through GPU Mode (B200 by default)
 popcorn submit --leaderboard qr_v2 --profile solution.py
 
 # Profile one QR v2 benchmark shape
@@ -199,7 +199,7 @@ if either lookup fails, it stops instead of risking a stale cached image.
 - `test` - Quick test run to check correctness
 - `benchmark` - Benchmark your solution (no leaderboard impact)
 - `leaderboard` - Official ranked submission
-- `profile` - Profile with Nsight Compute in your Modal account (default GPU: B200)
+- `profile` - Profile with Nsight Compute through GPU Mode (default GPU: B200)
 
 ### Submissions
 
