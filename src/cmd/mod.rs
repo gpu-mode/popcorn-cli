@@ -62,6 +62,10 @@ pub struct Cli {
     #[arg(long)]
     pub mode: Option<String>,
 
+    /// Profile with Nsight Compute through GPU Mode (default GPU: B200).
+    #[arg(long, conflicts_with = "profile_brev")]
+    pub profile: bool,
+
     /// Profile on the hosted GPU Mode Brev B200 and save Nsight Compute artifacts locally.
     /// Requires POPCORN_BREV_PROFILER_URL, or BREV_PROFILER_URL as a fallback.
     #[arg(long)]
@@ -72,9 +76,8 @@ pub struct Cli {
     #[arg(long, conflicts_with = "profile_brev")]
     pub local: bool,
 
-    /// Optional: Profile a single benchmark index when using --profile-brev
-    #[arg(long)]
-    pub benchmark_index: Option<usize>,
+    #[command(flatten)]
+    pub profile_options: crate::profile::ProfileOptions,
 
     // Optional: Specify output file
     #[arg(short, long)]
@@ -151,6 +154,10 @@ enum Commands {
         #[arg(long)]
         mode: Option<String>,
 
+        /// Profile with Nsight Compute through GPU Mode (default GPU: B200).
+        #[arg(long, conflicts_with = "profile_brev")]
+        profile: bool,
+
         /// Profile on the hosted GPU Mode Brev B200 and save Nsight Compute artifacts locally.
         /// Requires POPCORN_BREV_PROFILER_URL, or BREV_PROFILER_URL as a fallback.
         #[arg(long)]
@@ -161,9 +168,8 @@ enum Commands {
         #[arg(long, conflicts_with = "profile_brev")]
         local: bool,
 
-        /// Optional: Profile a single benchmark index when using --profile-brev
-        #[arg(long)]
-        benchmark_index: Option<usize>,
+        #[command(flatten)]
+        profile_options: crate::profile::ProfileOptions,
 
         // Optional: Specify output file
         #[arg(short, long)]
@@ -213,26 +219,47 @@ pub async fn execute(cli: Cli) -> Result<()> {
             leaderboard,
             mode,
             profile_brev,
+            profile,
             local,
-            benchmark_index,
+            profile_options,
             output,
             no_tui,
         }) => {
             // Use filepath from Submit command first, fallback to top-level filepath
             let final_filepath = filepath.or(cli.filepath);
+            let profile_brev = profile_brev || cli.profile_brev;
+            let profile = profile || cli.profile;
+            let local = local || cli.local;
+            if (profile_brev && (profile || local)) || (local && profile) {
+                return Err(anyhow!(
+                    "Profiling uses the hosted service; --local cannot be combined with profiling, and --profile conflicts with --profile-brev"
+                ));
+            }
+            let profile_options = profile_options.merge(cli.profile_options);
             let final_gpu = if profile_brev {
                 Some("B200_Brev".to_string())
             } else {
-                gpu.clone()
+                gpu.clone().or(cli.gpu.clone())
             };
-            let final_mode = if profile_brev {
+            let final_mode = if profile_brev || profile {
                 Some("profile".to_string())
             } else {
-                mode.clone()
+                mode.clone().or(cli.mode.clone())
             };
 
+            profile_options.validate(final_mode.as_deref())?;
+            if local && is_profile_mode(final_mode.as_deref()) {
+                return Err(anyhow!("Profiling uses the hosted service; omit --local"));
+            }
             if local {
-                submit::run_submit_local(final_filepath, gpu, leaderboard, mode, output).await
+                submit::run_submit_local(
+                    final_filepath,
+                    final_gpu,
+                    leaderboard.or(cli.leaderboard),
+                    final_mode,
+                    output,
+                )
+                .await
             } else {
                 let config = load_config()?;
                 let cli_id = config.cli_id.ok_or_else(|| {
@@ -245,14 +272,15 @@ pub async fn execute(cli: Cli) -> Result<()> {
                     )
                 })?;
 
-                if no_tui || profile_brev {
+                if no_tui || cli.no_tui || is_profile_mode(final_mode.as_deref()) {
                     submit::run_submit_plain(
                         final_filepath, // Resolved filepath
                         final_gpu,      // From Submit command
-                        leaderboard,    // From Submit command
-                        final_mode,     // From Submit command
+                        leaderboard.or(cli.leaderboard),
+                        final_mode, // From Submit command
                         cli_id,
-                        benchmark_index.or(cli.benchmark_index),
+                        profile_options,
+                        profile_brev,
                         output, // From Submit command
                     )
                     .await
@@ -260,8 +288,8 @@ pub async fn execute(cli: Cli) -> Result<()> {
                     submit::run_submit_tui(
                         final_filepath, // Resolved filepath
                         final_gpu,      // From Submit command
-                        leaderboard,    // From Submit command
-                        final_mode,     // From Submit command
+                        leaderboard.or(cli.leaderboard),
+                        final_mode, // From Submit command
                         cli_id,
                         output, // From Submit command
                     )
@@ -318,6 +346,8 @@ pub async fn execute(cli: Cli) -> Result<()> {
         None => {
             // Check if any of the submission-related flags were used at the top level
             if !cli.profile_brev
+                && !cli.profile
+                && !is_profile_mode(cli.mode.as_deref())
                 && !cli.local
                 && (cli.gpu.is_some() || cli.leaderboard.is_some() || cli.mode.is_some())
             {
@@ -329,12 +359,21 @@ pub async fn execute(cli: Cli) -> Result<()> {
 
             // Handle the case where only a filepath is provided (for backward compatibility)
             if let Some(top_level_filepath) = cli.filepath {
+                let mode = if cli.profile || cli.profile_brev {
+                    Some("profile".to_string())
+                } else {
+                    cli.mode
+                };
+                cli.profile_options.validate(mode.as_deref())?;
+                if cli.local && is_profile_mode(mode.as_deref()) {
+                    return Err(anyhow!("Profiling uses the hosted service; omit --local"));
+                }
                 if cli.local {
                     submit::run_submit_local(
                         Some(top_level_filepath),
                         cli.gpu,
                         cli.leaderboard,
-                        cli.mode,
+                        mode,
                         cli.output,
                     )
                     .await
@@ -350,14 +389,19 @@ pub async fn execute(cli: Cli) -> Result<()> {
                         )
                     })?;
 
-                    if cli.profile_brev {
+                    if cli.profile_brev || is_profile_mode(mode.as_deref()) {
                         submit::run_submit_plain(
                             Some(top_level_filepath),
-                            Some("B200_Brev".to_string()),
+                            if cli.profile_brev {
+                                Some("B200_Brev".to_string())
+                            } else {
+                                cli.gpu
+                            },
                             cli.leaderboard,
                             Some("profile".to_string()),
                             cli_id,
-                            cli.benchmark_index,
+                            cli.profile_options,
+                            cli.profile_brev,
                             cli.output,
                         )
                         .await
@@ -380,5 +424,66 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 ))
             }
         }
+    }
+}
+
+fn is_profile_mode(mode: Option<&str>) -> bool {
+    mode.is_some_and(|mode| mode.eq_ignore_ascii_case("profile"))
+}
+
+#[cfg(test)]
+mod profile_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn local_rejects_profile_mode_inherited_from_top_level() {
+        let cli = Cli::try_parse_from([
+            "popcorn",
+            "--mode",
+            "profile",
+            "submit",
+            "submission.py",
+            "--local",
+        ])
+        .unwrap();
+        let error = execute(cli).await.unwrap_err().to_string();
+        assert!(error.contains("omit --local"));
+    }
+
+    #[test]
+    fn profile_flags_accept_filters_at_both_entry_points() {
+        for prefix in [vec!["popcorn"], vec!["popcorn", "submit"]] {
+            for flag in ["--profile", "--profile-brev"] {
+                let mut args = prefix.clone();
+                args.extend([
+                    "submission.py",
+                    flag,
+                    "--benchmark-index",
+                    "3",
+                    "--ncu-kernel-name",
+                    "regex:custom",
+                    "--ncu-launch-count",
+                    "2",
+                ]);
+                assert!(Cli::try_parse_from(args).is_ok());
+            }
+        }
+        assert!(Cli::try_parse_from([
+            "popcorn",
+            "submit",
+            "submission.py",
+            "--profile",
+            "--profile-brev"
+        ])
+        .is_err());
+        assert!(Cli::try_parse_from([
+            "popcorn",
+            "submit",
+            "submission.py",
+            "--profile",
+            "--ncu-kernel-name-base",
+            "invalid"
+        ])
+        .is_err());
     }
 }

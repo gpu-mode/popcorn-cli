@@ -629,6 +629,7 @@ pub async fn submit_solution<P: AsRef<Path>>(
             leaderboard,
             gpu,
             submission_mode,
+            None,
             on_log,
         )
         .await;
@@ -646,12 +647,35 @@ pub async fn submit_solution<P: AsRef<Path>>(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
+pub async fn profile_solution<P: AsRef<Path>>(
+    client: &Client,
+    filepath: P,
+    file_content: &[u8],
+    leaderboard: &str,
+    gpu: &str,
+    options: &crate::profile::ProfileOptions,
+    on_log: Option<Box<dyn Fn(String) + Send + Sync>>,
+) -> Result<String> {
+    submit_solution_streaming(
+        client,
+        filepath,
+        file_content,
+        leaderboard,
+        gpu,
+        "profile",
+        Some(options),
+        on_log,
+    )
+    .await
+}
+
 pub async fn profile_brev_solution<P: AsRef<Path>>(
     client: &Client,
     filepath: P,
     file_content: &[u8],
     leaderboard: &str,
-    benchmark_index: Option<usize>,
+    options: &crate::profile::ProfileOptions,
     on_log: Option<Box<dyn Fn(String) + Send + Sync>>,
 ) -> Result<String> {
     let base_url = env::var("POPCORN_BREV_PROFILER_URL")
@@ -663,6 +687,51 @@ pub async fn profile_brev_solution<P: AsRef<Path>>(
         })?;
     let base_url = base_url.trim_end_matches('/');
 
+    let requested_capture_options: Vec<&str> = [
+        ("ncu_kernel_name", options.ncu_kernel_name.is_some()),
+        (
+            "ncu_kernel_name_base",
+            options.ncu_kernel_name_base.is_some(),
+        ),
+        ("ncu_launch_count", options.ncu_launch_count.is_some()),
+    ]
+    .into_iter()
+    .filter_map(|(name, requested)| requested.then_some(name))
+    .collect();
+    if !requested_capture_options.is_empty() {
+        let health_resp = client
+            .get(format!("{}/health", base_url))
+            .timeout(Duration::from_secs(30))
+            .send()
+            .await?;
+        let health_status = health_resp.status();
+        if !health_status.is_success() {
+            return Err(anyhow!(
+                "Profiler capability check returned status {}: {}",
+                health_status,
+                response_error_text(health_resp).await?
+            ));
+        }
+        let health: Value = health_resp.json().await?;
+        let supported = health
+            .pointer("/capabilities/request_capture_options")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                anyhow!(
+                    "Profiler does not advertise request-scoped NCU capture; \
+                     refusing to silently run the default capture window"
+                )
+            })?;
+        for name in &requested_capture_options {
+            if !supported.iter().any(|item| item.as_str() == Some(*name)) {
+                return Err(anyhow!(
+                    "Profiler does not advertise request capture option {}",
+                    name
+                ));
+            }
+        }
+    }
+
     let filename = filepath
         .as_ref()
         .file_name()
@@ -673,8 +742,18 @@ pub async fn profile_brev_solution<P: AsRef<Path>>(
     let mut form = Form::new()
         .part("file", part)
         .text("leaderboard", leaderboard.to_string());
-    if let Some(index) = benchmark_index {
+    if let Some(index) = options.benchmark_index {
         form = form.text("benchmark_index", index.to_string());
+    }
+
+    if let Some(value) = &options.ncu_kernel_name {
+        form = form.text("ncu_kernel_name", value.clone());
+    }
+    if let Some(value) = &options.ncu_kernel_name_base {
+        form = form.text("ncu_kernel_name_base", value.clone());
+    }
+    if let Some(value) = options.ncu_launch_count {
+        form = form.text("ncu_launch_count", value.to_string());
     }
 
     let resp = client
@@ -887,12 +966,15 @@ async fn download_profile_artifacts(
 }
 
 #[derive(Debug)]
-struct ExtractedProfileArtifacts {
-    details: Vec<PathBuf>,
-    reports: Vec<PathBuf>,
+pub(crate) struct ExtractedProfileArtifacts {
+    pub details: Vec<PathBuf>,
+    pub reports: Vec<PathBuf>,
 }
 
-fn extract_profile_artifacts(zip_path: &Path, bytes: &[u8]) -> Result<ExtractedProfileArtifacts> {
+pub(crate) fn extract_profile_artifacts(
+    zip_path: &Path,
+    bytes: &[u8],
+) -> Result<ExtractedProfileArtifacts> {
     let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(|e| {
         anyhow!(
             "Failed to read profile artifact {}: {}",
@@ -1553,6 +1635,7 @@ fn format_submission_details(details: &SubmissionDetails) -> Result<String> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn submit_solution_streaming<P: AsRef<Path>>(
     client: &Client,
     filepath: P,
@@ -1560,6 +1643,7 @@ async fn submit_solution_streaming<P: AsRef<Path>>(
     leaderboard: &str,
     gpu: &str,
     submission_mode: &str,
+    profile_options: Option<&crate::profile::ProfileOptions>,
     on_log: Option<Box<dyn Fn(String) + Send + Sync>>,
 ) -> Result<String> {
     let base_url =
@@ -1573,15 +1657,38 @@ async fn submit_solution_streaming<P: AsRef<Path>>(
 
     let part = Part::bytes(file_content.to_vec()).file_name(filename.to_string());
 
-    let form = Form::new().part("file", part);
+    let mut form = Form::new().part("file", part);
+    if let Some(options) = profile_options {
+        options.validate(Some("profile"))?;
+        for (key, value) in serde_json::to_value(options)?.as_object().unwrap() {
+            if !value.is_null() {
+                form = form.text(
+                    key.clone(),
+                    value
+                        .as_str()
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| value.to_string()),
+                );
+            }
+        }
+    }
 
-    let url = format!(
-        "{}/{}/{}/{}",
-        base_url,
-        leaderboard.to_lowercase(),
-        gpu,
-        submission_mode.to_lowercase()
-    );
+    let url = if profile_options.is_some() {
+        format!(
+            "{}/profile/{}/{}",
+            base_url,
+            leaderboard.to_lowercase(),
+            gpu
+        )
+    } else {
+        format!(
+            "{}/{}/{}/{}",
+            base_url,
+            leaderboard.to_lowercase(),
+            gpu,
+            submission_mode.to_lowercase()
+        )
+    };
 
     let resp = client
         .post(&url)
@@ -1648,6 +1755,13 @@ async fn submit_solution_streaming<P: AsRef<Path>>(
                         }
                         "result" => {
                             let result_val: Value = serde_json::from_str(data)?;
+                            if profile_options.is_some() {
+                                return crate::profile::save_hosted_results(
+                                    &result_val,
+                                    leaderboard,
+                                    gpu,
+                                );
+                            }
 
                             if let Some(ref cb) = on_log {
                                 // Handle "results" array
@@ -1758,6 +1872,9 @@ async fn submit_solution_streaming<P: AsRef<Path>>(
         ))
     } else {
         let result: Value = resp.json().await?;
+        if profile_options.is_some() {
+            return crate::profile::save_hosted_results(&result, leaderboard, gpu);
+        }
         let pretty_result = match result.get("results") {
             Some(result_obj) => serde_json::to_string_pretty(result_obj)?,
             None => return Err(anyhow!("Invalid non-streaming response structure")),
@@ -2037,6 +2154,56 @@ mod tests {
         }
 
         String::from_utf8(request).unwrap()
+    }
+
+    #[tokio::test]
+    async fn hosted_profile_uses_popcorn_auth_and_request_options() {
+        let _env_guard = ENV_LOCK.lock().await;
+        let original = std::env::var("POPCORN_API_URL").ok();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        std::env::set_var(
+            "POPCORN_API_URL",
+            format!("http://{}", listener.local_addr().unwrap()),
+        );
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let request = read_http_request(&mut stream).await;
+            assert!(request.starts_with("POST /profile/qr_v2/B200 HTTP/1.1"));
+            assert!(request
+                .to_lowercase()
+                .contains("x-popcorn-cli-id: test-user"));
+            for field in ["benchmark_index", "ncu_kernel_name", "ncu_launch_count"] {
+                assert!(request.contains(&format!("name=\"{}\"", field)));
+            }
+            assert!(request.contains("regex:solver"));
+            let body = "event: error\ndata: {\"detail\":\"deliberate capture failure\"}\n\n";
+            stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).as_bytes()).await.unwrap();
+        });
+        let client = create_client(Some("test-user".to_string())).unwrap();
+        let result = profile_solution(
+            &client,
+            "submission.py",
+            b"pass",
+            "qr_v2",
+            "B200",
+            &crate::profile::ProfileOptions {
+                benchmark_index: Some(1),
+                ncu_kernel_name: Some("regex:solver".to_string()),
+                ncu_launch_count: Some(2),
+                ..Default::default()
+            },
+            None,
+        )
+        .await;
+        server.await.unwrap();
+        match original {
+            Some(value) => std::env::set_var("POPCORN_API_URL", value),
+            None => std::env::remove_var("POPCORN_API_URL"),
+        }
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("deliberate capture failure"));
     }
 
     #[tokio::test]

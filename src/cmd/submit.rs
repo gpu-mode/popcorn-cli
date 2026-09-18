@@ -681,13 +681,15 @@ pub async fn run_submit_tui(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_submit_plain(
     filepath: Option<String>,
     gpu: Option<String>,
     leaderboard: Option<String>,
     mode: Option<String>,
     cli_id: String,
-    benchmark_index: Option<usize>,
+    profile_options: crate::profile::ProfileOptions,
+    profile_brev: bool,
     output: Option<String>,
 ) -> Result<()> {
     let file_to_submit = match filepath {
@@ -717,6 +719,11 @@ pub async fn run_submit_plain(
             } else {
                 None
             }
+        })
+        .or_else(|| {
+            mode.as_deref()
+                .is_some_and(|m| m.eq_ignore_ascii_case("profile"))
+                .then(|| "B200".to_string())
         })
         .ok_or_else(|| anyhow!("GPU not specified. Use --gpu flag or add GPU directive to file"))?;
 
@@ -749,18 +756,27 @@ pub async fn run_submit_plain(
 
     // Create client and submit
     let client = service::create_client(Some(cli_id))?;
-    let result = if final_mode.eq_ignore_ascii_case("profile")
-        && final_gpu.eq_ignore_ascii_case("B200_Brev")
-    {
+    let result = if final_mode.eq_ignore_ascii_case("profile") && profile_brev {
         service::profile_brev_solution(
             &client,
             &file_to_submit,
             &file_content,
             &final_leaderboard,
-            benchmark_index,
+            &profile_options,
             Some(Box::new(|msg| {
                 eprintln!("{}", msg);
             })),
+        )
+        .await?
+    } else if final_mode.eq_ignore_ascii_case("profile") {
+        service::profile_solution(
+            &client,
+            &file_to_submit,
+            &file_content,
+            &final_leaderboard,
+            &final_gpu,
+            &profile_options,
+            Some(Box::new(|msg| eprintln!("{}", msg))),
         )
         .await?
     } else {

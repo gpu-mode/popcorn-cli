@@ -1,6 +1,7 @@
 mod cmd;
 mod local;
 mod models;
+mod profile;
 mod service;
 mod utils;
 mod views;

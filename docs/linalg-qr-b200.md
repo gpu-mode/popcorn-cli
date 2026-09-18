@@ -22,8 +22,8 @@ popcorn submit --leaderboard qr_v2 --gpu B200 --mode test submission.py
 Profile the first benchmark shape with Nsight Compute:
 
 ```bash
-export POPCORN_BREV_PROFILER_URL=https://http--brev-profiler-proxy--dxfjds728w5v.code.run
-popcorn submit --leaderboard qr_v2 --profile-brev --benchmark-index 0 submission.py
+popcorn register discord
+popcorn submit --leaderboard qr_v2 --profile --benchmark-index 0 submission.py
 ```
 
 The CLI downloads a `.zip` and extracts `ncu-details.txt`, `ncu-details.csv`,
