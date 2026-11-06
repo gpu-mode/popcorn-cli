@@ -91,6 +91,7 @@ cuda_image = (
     .uv_pip_install(
         "tinygrad~=0.10",
         "helion",
+        "max",
     )
     .uv_pip_install(
         "nvidia-cutlass-dsl==4.5.2",
