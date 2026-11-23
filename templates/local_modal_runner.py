@@ -138,7 +138,6 @@ cuda_image = (
 )
 
 app = modal.App("popcorn-local-runner", image=cuda_image)
-modal_gpu = os.environ["POPCORN_LOCAL_MODAL_GPU"]
 
 
 def _find_problem(leaderboard: str) -> tuple[Path, list[str]]:
@@ -166,7 +165,7 @@ def _find_problem(leaderboard: str) -> tuple[Path, list[str]]:
     return Path("/opt/reference-kernels/problems") / directory / "task.yml", supported_gpus
 
 
-@app.function(gpu=modal_gpu, timeout=3600)
+@app.function(timeout=3600)
 def evaluate(submission: str, leaderboard: str, gpu: str, mode: str) -> dict:
     try:
         from libkernelbot.consts import GPU_TO_SM, SubmissionMode
@@ -217,7 +216,7 @@ def evaluate(submission: str, leaderboard: str, gpu: str, mode: str) -> dict:
 @app.local_entrypoint()
 def main():
     submission_path = Path(os.environ["POPCORN_LOCAL_SUBMISSION"])
-    payload = evaluate.remote(
+    payload = evaluate.with_options(gpu=os.environ["POPCORN_LOCAL_MODAL_GPU"]).remote(
         submission_path.read_text(),
         os.environ["POPCORN_LOCAL_LEADERBOARD"],
         os.environ["POPCORN_LOCAL_GPU"],
