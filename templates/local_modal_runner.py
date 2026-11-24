@@ -91,6 +91,8 @@ cuda_image = (
     .uv_pip_install(
         "tinygrad~=0.10",
         "helion",
+        # Mojo compiler, `mojo.importer`, and the MAX GPU libraries. Pinned because
+        # Mojo syntax still changes between releases and would break submissions.
         "max==26.7.0",
     )
     .uv_pip_install(
